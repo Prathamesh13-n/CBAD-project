@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard — CDAD</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/forms.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__mark">🎓</div>
+        <div class="sidebar__brand-text"><strong>CDAD</strong><span>Student Portal</span></div>
+      </div>
+      <button class="nav-link active" data-view="overview"><span class="nav-link__icon">▣</span> Dashboard</button>
+      <button class="nav-link" data-view="profile"><span class="nav-link__icon">●</span> My Profile</button>
+      <button class="nav-link" data-view="group"><span class="nav-link__icon">▦</span> My Group</button>
+      <button class="nav-link" data-view="creategroup"><span class="nav-link__icon">➕</span> Create Group</button>
+      <button class="nav-link" data-view="project"><span class="nav-link__icon">◧</span> My Project</button>
+      <button class="nav-link" data-view="progress"><span class="nav-link__icon">◔</span> Progress</button>
+      <button class="nav-link" data-view="github"><span class="nav-link__icon">⌥</span> GitHub</button>
+      <button class="nav-link" data-view="marks"><span class="nav-link__icon">▤</span> Marks</button>
+      <button class="nav-link" data-view="presentation"><span class="nav-link__icon">◈</span> Presentation</button>
+      <button class="nav-link" data-view="peers"><span class="nav-link__icon">◎</span> Connect</button>
+      <button class="nav-link" data-view="requests"><span class="nav-link__icon">✎</span> Requests</button>
+      <button class="nav-link" data-view="announcements"><span class="nav-link__icon">✉</span> Announcements</button>
+      <button class="nav-link" data-view="notifications"><span class="nav-link__icon">◔</span> Notifications <span
+          class="nav-link__badge" id="sidebarNotifBadge" style="display:none;"></span></button>
+      <div class="sidebar__footer">
+        <button class="logout-btn" id="logoutBtn"><span class="nav-link__icon">⏻</span> Logout</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- OVERVIEW -->
+      <section class="view active" id="view-overview">
+        <div class="topbar">
+          <div>
+            <h1>Dashboard</h1>
+            <div class="topbar__sub" id="welcomeMsg">Welcome back 👋</div>
+          </div>
+          <div class="topbar__utility">
+            <button class="icon-btn" id="bellBtn" title="Notifications" onclick="showView('notifications')">
+              🔔<span class="icon-btn__badge" id="notifBadge" style="display:none;"></span>
+            </button>
+            <div class="topbar-user" id="topbarUser"></div>
+          </div>
+        </div>
+        <div class="stat-grid" id="overviewStats"></div>
+        <div class="dash-grid" id="overviewMainGrid"></div>
+      </section>
+
+      <!-- PROFILE -->
+      <section class="view" id="view-profile">
+        <div class="topbar">
+          <div>
+            <h1>My Profile</h1>
+            <div class="topbar__sub">Manage your personal information</div>
+          </div>
+        </div>
+        <div class="section" id="profileCard"></div>
+      </section>
+
+      <!-- MY GROUP -->
+      <section class="view" id="view-group">
+        <div class="topbar">
+          <div>
+            <h1>My Group</h1>
+            <div class="topbar__sub">Dashboard / My Group</div>
+          </div>
+        </div>
+        <div class="section" id="groupPanel"></div>
+      </section>
+
+      <!-- CREATE GROUP (create a group, or join one by the leader's Student ID) -->
+      <section class="view" id="view-creategroup">
+        <div class="topbar">
+          <div>
+            <h1>Create Group</h1>
+            <div class="topbar__sub">Start a new group, or join one using the leader's Student ID</div>
+          </div>
+        </div>
+        <div id="createGroupPanel"></div>
+      </section>
+
+      <!-- MY PROJECT -->
+      <section class="view" id="view-project">
+        <div class="topbar">
+          <div>
+            <h1>My Project</h1>
+            <div class="topbar__sub">Dashboard / My Project</div>
+          </div>
+        </div>
+        <div class="section" id="projectPanel"></div>
+      </section>
+
+      <!-- PROGRESS -->
+      <section class="view" id="view-progress">
+        <div class="topbar">
+          <div>
+            <h1>Project Progress</h1>
+            <div class="topbar__sub">Dashboard / Progress</div>
+          </div>
+        </div>
+        <div class="section" id="progressPanel"></div>
+      </section>
+
+      <!-- GITHUB -->
+      <section class="view" id="view-github">
+        <div class="topbar">
+          <div>
+            <h1>GitHub</h1>
+            <div class="topbar__sub">Dashboard / GitHub</div>
+          </div>
+        </div>
+        <div class="section" id="githubPanel"></div>
+      </section>
+
+      <!-- MARKS -->
+      <section class="view" id="view-marks">
+        <div class="topbar">
+          <div>
+            <h1>My Marks</h1>
+            <div class="topbar__sub">View your evaluation and marks</div>
+          </div>
+        </div>
+        <div class="dash-grid--2" style="display:grid; gap:18px;" id="marksMainGrid"></div>
+      </section>
+
+      <!-- PRESENTATION -->
+      <section class="view" id="view-presentation">
+        <div class="topbar">
+          <div>
+            <h1>Presentation</h1>
+            <div class="topbar__sub">Dashboard / Presentation</div>
+          </div>
+        </div>
+        <div class="section" id="presentationPanel"></div>
+      </section>
+
+      <!-- PEERS (student-to-student requests) -->
+      <section class="view" id="view-peers">
+        <div class="topbar">
+          <div>
+            <h1>Connect with Students</h1>
+            <div class="topbar__sub">Send and manage peer connection requests</div>
+          </div>
+        </div>
+        <div class="section" id="peersPanel"></div>
+      </section>
+
+      <!-- REQUESTS TO FACULTY -->
+      <section class="view" id="view-requests">
+        <div class="topbar">
+          <div>
+            <h1>My Requests</h1>
+            <div class="topbar__sub">Requests submitted to faculty</div>
+          </div>
+        </div>
+        <div class="section" id="requestsPanel"></div>
+      </section>
+
+      <!-- ANNOUNCEMENTS -->
+      <section class="view" id="view-announcements">
+        <div class="topbar">
+          <div>
+            <h1>Announcements</h1>
+            <div class="topbar__sub">Dashboard / Announcements</div>
+          </div>
+        </div>
+        <div class="section" id="announcementsPanel"></div>
+      </section>
+
+      <!-- NOTIFICATIONS -->
+      <section class="view" id="view-notifications">
+        <div class="topbar">
+          <div>
+            <h1>Notifications</h1>
+            <div class="topbar__sub">Dashboard / Notifications</div>
+          </div>
+        </div>
+        <div class="section" id="notificationsPanel"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/groups.js"></script>
+  <script src="js/projects.js"></script>
+  <script src="js/marks.js"></script>
+  <script src="js/presentations.js"></script>
+  <script src="js/requests.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/announcements.js"></script>
+  <script src="js/student.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Details — CDAD</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/forms.css">
+<link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <main class="main" style="max-width:900px; margin:0 auto;">
+    <div class="topbar">
+      <div>
+        <div class="topbar__eyebrow">Group Record</div>
+        <h1 id="groupTitle">Loading…</h1>
+      </div>
+      <div class="topbar__actions">
+        <a class="btn btn--ghost" href="javascript:history.back()">&larr; Back</a>
+      </div>
+    </div>
+    <div id="groupDetailsContent"></div>
+  </main>
+
+  <script src="js/storage.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/groups.js"></script>
+  <script src="js/projects.js"></script>
+  <script src="js/presentations.js"></script>
+  <script>
+    function emptyState(msg) {
+      return `<div class="empty-state"><div class="empty-state__icon">—</div><p>${escapeHtml(msg)}</p></div>`;
+    }
+
+    function render() {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get('id');
+      const group = id ? getGroup(id) : null;
+      const host = document.getElementById('groupDetailsContent');
+      const titleEl = document.getElementById('groupTitle');
+
+      if (!group) {
+        titleEl.textContent = 'Group not found';
+        host.innerHTML = `<div class="section">${emptyState('No group matches this ID. It may have been deleted, or no ?id= parameter was provided.')}</div>`;
+        return;
+      }
+
+      titleEl.textContent = `${group.name} (${group.displayId})`;
+      const project = getGroup(group.displayId).project ? getProject(group.project) : null;
+      const students = getData(CDAD_KEYS.STUDENTS);
+      const members = (group.members || []).map((m) => students.find((s) => s.displayId === m)).filter(Boolean);
+      const presentations = presentationsForGroup(group.displayId);
+
+      host.innerHTML = `
+        <div class="section">
+          <div class="section__head">
+            <h3>Group Summary</h3>
+            <span class="badge ${statusBadgeClass(group.status)}">${escapeHtml(group.status)}</span>
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Group ID</label><div class="mono" style="padding:9px 0;">${escapeHtml(group.displayId)}</div></div>
+            <div class="field"><label>Team Leader</label><div style="padding:9px 0;">${escapeHtml(group.teamLeader || '—')}</div></div>
+            <div class="field"><label>Members</label><div style="padding:9px 0;">${memberCount(group)}</div></div>
+            <div class="field"><label>Progress</label><div style="padding:9px 0;">${group.progress || 0}%</div></div>
+          </div>
+          <div class="bar-track" style="margin-top:6px;"><div class="bar-fill" style="width:${group.progress || 0}%"></div></div>
+        </div>
+
+        <div class="section">
+          <div class="section__head"><h3>Members</h3></div>
+          <div class="card-grid">
+            ${members.map((s) => `
+              <div class="card">
+                <div class="card__top">
+                  <div style="display:flex; gap:10px; align-items:center;">
+                    <div class="avatar">${s.avatar ? `<img src="${escapeHtml(s.avatar)}">` : initials(s.name)}</div>
+                    <div><div class="card__title">${escapeHtml(s.name)}</div><div class="card__meta">${escapeHtml(s.displayId)}</div></div>
+                  </div>
+                  ${s.displayId === group.teamLeader ? '<span class="badge badge--warn">Leader</span>' : ''}
+                </div>
+              </div>`).join('') || emptyState('No members yet.')}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__head"><h3>Project</h3></div>
+          ${project ? `
+            <div class="card">
+              <div class="card__top">
+                <div><div class="card__title">${escapeHtml(project.title)}</div><div class="card__meta mono">${escapeHtml(project.displayId)} &middot; Deadline ${formatDate(project.deadline)}</div></div>
+                <span class="badge ${statusBadgeClass(project.status)}">${escapeHtml(project.status)}</span>
+              </div>
+              <p style="font-size:13px; color:var(--ink-soft);">${escapeHtml(project.description)}</p>
+              <div class="stage-list">
+                ${PROJECT_STAGES.map((s, i) => `
+                  <div class="stage-row">
+                    <span class="stage-row__name"><span class="stage-index">0${i + 1}</span> ${s}</span>
+                    <span class="badge ${statusBadgeClass(project.stages[s])}">${escapeHtml(project.stages[s])}</span>
+                  </div>`).join('')}
+              </div>
+              <div class="card__actions" style="margin-top:10px;">
+                <a class="btn btn--gold btn--sm" href="${escapeHtml(project.githubUrl || '#')}" target="_blank" rel="noopener">Open Repository ↗</a>
+              </div>
+            </div>` : emptyState('No project assigned to this group.')}
+        </div>
+
+        <div class="section">
+          <div class="section__head"><h3>Presentations</h3></div>
+          ${presentations.length ? presentations.map((p) => `
+            <div class="list-item">
+              <div class="list-item__top">
+                <div class="list-item__title">${escapeHtml(p.displayId)} &middot; ${escapeHtml(p.venue)}</div>
+                <span class="badge ${statusBadgeClass(p.status)}">${escapeHtml(p.status)}</span>
+              </div>
+              <div class="list-item__body">${formatDate(p.date)} at ${escapeHtml(p.time)}</div>
+            </div>`).join('') : emptyState('No presentations scheduled.')}
+        </div>`;
+    }
+
+    render();
+  </script>
+</body>
+</html>

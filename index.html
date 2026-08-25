@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDAD — College Digital Academic Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-hero">
+      <div class="login-hero__inner">
+        <div class="login-hero__illustration">
+          <svg viewBox="0 0 220 150" width="100%" xmlns="http://www.w3.org/2000/svg">
+            <rect x="30" y="14" width="160" height="96" rx="10" fill="#eaf1ff"></rect>
+            <rect x="30" y="14" width="160" height="18" rx="10" fill="#2f6fed"></rect>
+            <circle cx="40" cy="23" r="3" fill="#fff"></circle>
+            <circle cx="50" cy="23" r="3" fill="#fff"></circle>
+            <circle cx="60" cy="23" r="3" fill="#fff"></circle>
+            <circle cx="80" cy="72" r="26" fill="#fff"></circle>
+            <path d="M80 46 A26 26 0 0 1 104 84 L80 72 Z" fill="#2f6fed"></path>
+            <path d="M80 46 A26 26 0 0 0 58 88 L80 72 Z" fill="#17b26a"></path>
+            <path d="M58 88 A26 26 0 0 0 104 84 L80 72 Z" fill="#f59e0b"></path>
+            <rect x="118" y="52" width="14" height="34" rx="2" fill="#7c5cf0"></rect>
+            <rect x="136" y="40" width="14" height="46" rx="2" fill="#2f6fed"></rect>
+            <rect x="154" y="60" width="14" height="26" rx="2" fill="#17b26a"></rect>
+            <rect x="90" y="118" width="40" height="8" rx="4" fill="#dbe4fb"></rect>
+            <circle cx="46" cy="128" r="10" fill="#2f6fed"></circle>
+            <rect x="40" y="140" width="12" height="10" fill="#2f6fed"></rect>
+            <circle cx="176" cy="128" r="10" fill="#f59e0b"></circle>
+            <rect x="170" y="140" width="12" height="10" fill="#f59e0b"></rect>
+          </svg>
+        </div>
+        <h1>CDAD</h1>
+        <p>College Digital Academic Dashboard<br>Academic Project Management Portal</p>
+      </div>
+    </div>
+    <div class="login-panel">
+      <div class="login-card">
+        <h2>Welcome Back!</h2>
+        <p class="muted">Login to continue to CDAD</p>
+        <div class="role-switch">
+          <button type="button" class="active" data-role="student">Student</button>
+          <button type="button" data-role="faculty">Faculty</button>
+        </div>
+        <div class="login-error" id="loginError"></div>
+        <form id="loginForm">
+          <div class="login-field">
+            <label id="emailLabel">Student ID</label>
+            <input type="text" name="identifier" id="loginEmail" required placeholder="ADT24SOCB0001">
+          </div>
+          <div class="login-field">
+            <label>Password</label>
+            <div class="login-field-password">
+              <input type="password" name="password" id="loginPassword" required placeholder="••••••••">
+              <button type="button" id="togglePassword">Show</button>
+            </div>
+          </div>
+          <div class="login-row-between">
+            <label class="remember-me"><input type="checkbox" checked> Remember me</label>
+            <a href="#" onclick="return false;">Forgot Password?</a>
+          </div>
+          <button type="submit" class="btn btn--primary" style="width:100%; justify-content:center; padding:12px;">Login</button>
+        </form>
+        <div class="demo-hint">
+          <strong>Login credentials</strong><br>
+          Faculty — FAC001 / faculty123<br>
+          Hanfa — ADT24SOCB0001 / PASS123<br>
+          Parth — ADT24SOCB0002 / PASS123<br>
+          Prathamesh — ADT24SOCB0820 / PASS123
+        </div>
+        <div class="login-footer">&copy; 2026 CDAD. All rights reserved.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    let selectedRole = 'student';
+
+    document.querySelectorAll('[data-role]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-role]').forEach((b) => b.classList.toggle('active', b === btn));
+        selectedRole = btn.dataset.role;
+        document.getElementById('emailLabel').textContent = selectedRole === 'faculty' ? 'Faculty ID' : 'Student ID';
+        document.getElementById('loginEmail').placeholder = selectedRole === 'faculty' ? 'FAC001' : 'ADT24SOCB0001';
+        document.getElementById('loginError').classList.remove('show');
+      });
+    });
+
+    document.getElementById('togglePassword').addEventListener('click', (e) => {
+      const input = document.getElementById('loginPassword');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      e.target.textContent = show ? 'Hide' : 'Show';
+    });
+
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const loginId = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const result = attemptLogin(selectedRole, loginId, password);
+      const errEl = document.getElementById('loginError');
+      if (!result.ok) {
+        errEl.textContent = result.error;
+        errEl.classList.add('show');
+        return;
+      }
+      window.location.href = selectedRole === 'faculty' ? 'faculty.html' : 'student.html';
+    });
+
+    // if already logged in, skip straight to dashboard
+    (function redirectIfLoggedIn() {
+      const u = getCurrentUser();
+      if (u) window.location.href = u.type === 'faculty' ? 'faculty.html' : 'student.html';
+    })();
+  </script>
+</body>
+</html>

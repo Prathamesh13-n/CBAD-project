@@ -1,0 +1,202 @@
+/* ============================================================
+   CDAD :: dashboard.css — stat cards, panels, tables, charts
+   ============================================================ */
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-card);
+}
+.section__head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 12px; flex-wrap: wrap;
+}
+.section__head h3 { font-size: 15.5px; }
+.section__link { font-size: 12.5px; font-weight: 700; color: var(--blue); }
+
+/* ---- Icon stat cards (Dashboard row) ---- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+}
+.stat-card__icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; margin-bottom: 14px;
+}
+.stat-card--blue .stat-card__icon { background: var(--blue-dim); color: var(--blue); }
+.stat-card--green .stat-card__icon { background: var(--green-dim); color: var(--green); }
+.stat-card--purple .stat-card__icon { background: var(--purple-dim); color: var(--purple); }
+.stat-card--orange .stat-card__icon { background: var(--orange-dim); color: var(--orange); }
+.stat-card__label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; }
+.stat-card__value { font-size: 22px; font-weight: 800; color: var(--ink); }
+.stat-card__sub { font-size: 12px; margin-top: 4px; font-weight: 600; }
+.stat-card__sub--good { color: var(--green); }
+.stat-card__sub--warn { color: var(--orange); }
+.stat-card__sub--muted { color: var(--ink-faint); font-weight: 500; }
+.stat-card__bar { margin-top: 12px; }
+
+/* ---- Two-column dashboard grid ---- */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+.dash-grid--2 { grid-template-columns: 1fr 1fr; }
+
+/* ---- Progress bar ---- */
+.bar-track { background: var(--line-soft); border-radius: 999px; height: 9px; overflow: hidden; }
+.bar-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width 0.4s ease; }
+.bar-fill--blue { background: var(--blue); }
+
+/* ---- Progress stage checklist ---- */
+.checklist { display: flex; flex-direction: column; gap: 13px; margin-top: 6px; }
+.checklist-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.checklist-row--clickable { cursor: pointer; padding: 4px 6px; margin: 0 -6px; border-radius: 8px; transition: background 0.12s ease; }
+.checklist-row--clickable:hover { background: var(--line-soft); }
+.check-dot {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff;
+  border: 2px solid var(--line);
+}
+.check-dot--done { background: var(--green); border-color: var(--green); }
+.check-dot--active { background: var(--blue); border-color: var(--blue); }
+.check-dot--pending { background: transparent; }
+.checklist-row__name { flex: 1; color: var(--ink); }
+.checklist-row__status { font-size: 11.5px; font-weight: 700; }
+.checklist-row__status--done { color: var(--green); }
+.checklist-row__status--active { color: var(--blue); }
+.checklist-row__status--pending { color: var(--ink-faint); }
+.checklist-select { border: 1px solid var(--line); border-radius: 6px; font-size: 11.5px; padding: 3px 6px; background: var(--surface); }
+
+/* ---- Notification card list ---- */
+.notif-mini-list { display: flex; flex-direction: column; gap: 14px; }
+.notif-mini {
+  display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px;
+}
+.notif-mini__icon {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+  background: var(--blue-dim); color: var(--blue);
+}
+.notif-mini__title { font-weight: 700; color: var(--ink); }
+.notif-mini__time { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+.notif-mini-foot { margin-top: 14px; font-size: 12px; color: var(--ink-faint); border-top: 1px solid var(--line-soft); padding-top: 12px; }
+
+/* ---- Grid of cards (groups/projects) ---- */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+.card {
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 16px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-card);
+}
+.card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.card__title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.card__meta { font-size: 12px; color: var(--ink-soft); }
+.card__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.card__progress-label { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 4px; }
+
+/* ---- Tables ---- */
+.table-wrap { overflow-x: auto; }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ink-faint); font-weight: 700; padding: 10px; border-bottom: 1.5px solid var(--line);
+  white-space: nowrap;
+}
+.data-table td { padding: 12px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.data-table tr:hover td { background: #fafbfd; }
+.row-name { display: flex; align-items: center; gap: 10px; }
+.row-name__text strong { display: block; font-size: 13px; }
+.row-name__text span { font-size: 11.5px; color: var(--ink-soft); }
+.table-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.empty-row td { text-align: center; color: var(--ink-faint); padding: 30px 10px; font-size: 13px; }
+.progress-cell { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+.progress-cell .bar-track { flex: 1; }
+.progress-cell span { font-size: 12px; font-weight: 700; width: 34px; text-align: right; }
+
+/* ---- Pagination ---- */
+.pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; flex-wrap: wrap; gap: 10px; }
+.pagination__info { font-size: 12.5px; color: var(--ink-soft); }
+.pagination__pages { display: flex; gap: 6px; align-items: center; }
+.page-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink-soft); font-size: 12.5px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.page-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 700; }
+.page-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+/* ---- Search/filter bar ---- */
+.filter-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.filter-bar input[type="search"], .filter-bar select {
+  padding: 9px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--canvas); color: var(--ink); min-width: 150px;
+}
+.filter-bar input[type="search"] { flex: 1; min-width: 200px; }
+
+/* ---- Tabs ---- */
+.tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; flex-wrap: wrap; }
+.tab-btn {
+  background: transparent; border: none; padding: 10px 14px; font-size: 13px;
+  color: var(--ink-soft); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600;
+}
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ---- Marks ledger + donut + line chart ---- */
+.marks-ledger { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.marks-ledger table { width: 100%; border-collapse: collapse; }
+.marks-ledger th, .marks-ledger td { padding: 12px 16px; font-size: 13px; }
+.marks-ledger thead th { background: var(--canvas); color: var(--ink-soft); font-weight: 700; text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+.marks-ledger tbody tr:nth-child(even) { background: #fbfbfd; }
+.marks-ledger tfoot td { border-top: 2px solid var(--line); font-weight: 700; background: var(--blue-dim); color: var(--blue); }
+
+.donut-wrap { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.donut-center-value { font-size: 24px; font-weight: 800; color: var(--ink); }
+.donut-center-label { font-size: 11px; color: var(--ink-faint); }
+.donut-stats { display: flex; gap: 26px; margin-top: 16px; }
+.donut-stat { text-align: center; }
+.donut-stat__value { font-size: 17px; font-weight: 800; }
+.donut-stat__value--good { color: var(--green); }
+.donut-stat__label { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.line-chart-wrap { width: 100%; }
+.line-chart-caption { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
+
+/* ---- Activity feed ---- */
+.activity-list { display: flex; flex-direction: column; }
+.activity-item {
+  display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line-soft);
+  font-size: 13px; align-items: flex-start;
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); margin-top: 6px; flex-shrink: 0; }
+.activity-item__time { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+
+/* ---- Notification / request list items ---- */
+.list-item {
+  border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+  padding: 13px 15px; margin-bottom: 10px; background: var(--surface);
+}
+.list-item.unread { border-left: 3px solid var(--blue); background: #f8faff; }
+.list-item__top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.list-item__title { font-size: 13.5px; font-weight: 700; }
+.list-item__body { font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+.list-item__foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--ink-faint); }
+.empty-state__icon { font-size: 26px; margin-bottom: 8px; }
