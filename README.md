@@ -47,12 +47,11 @@ file server, e.g. `npx serve .` or Python's `python3 -m http.server`.
 **Login is always by ID — never by email.** Email is stored on each record
 for reference only.
 
-| Role    | Login ID          | Password    |
-|---------|--------------------|-------------|
-| Faculty | `FAC001`           | `faculty123`|
-| Student | *their Enrollment  | 
-|              Number**       |  `PASS123` |
-|--------|--------------------|-------------|
+| Role    | Login ID        | Password     |
+|---------|------------------|--------------|
+| Faculty | `FAC001`         | `faculty123` |
+| Student | Enrollment No. (e.g. `ADT24SOCB0001`) | `PASS123` (default) |
+
 Faculty adds real students one at a time (Faculty → Students → **Add
 Student**) or in bulk via **Import CSV** (a file with Enrollment No. + Name
 columns, matching the roster template — Email/Phone/Group/Password columns
