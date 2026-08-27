@@ -190,32 +190,37 @@ no other file talks to `localStorage` directly.
 ## File Structure
 
 CDAD/
-├── index.html Login (ID-only, Student/Faculty tabs)
-├── student.html Student dashboard (SPA-style views)
-├── faculty.html Faculty dashboard (SPA-style views)
-├── group-details.html Standalone group record page (?id=G01)
-├── css/
-│ ├── style.css Tokens, layout shell, buttons, badges, login
-│ ├── dashboard.css Stat cards, tables, charts, lists
-│ ├── forms.css Modal + form field styling
-│ └── responsive.css Mobile breakpoints
-├── js/
-│ ├── storage.js LocalStorage helpers (single source of truth)
-│ ├── common.js Modals (incl. blocking), toasts, activity log,
-│ │ formatting, inline SVG donut/line charts
-│ ├── data.js Versioned seed data (bump SEED_VERSION to reseed)
-│ ├── auth.js Login/logout/session, ID-only auth
-│ ├── groups.js Group CRUD + join-by-ID request workflow
-│ ├── projects.js Project CRUD, stages, submission workflow
-│ ├── marks.js, presentations.js,
-│ │ requests.js, notifications.js,
-│ │ announcements.js Feature-specific CRUD
-│ ├── student.js Renders/wires student.html
-│ └── faculty.js Renders/wires faculty.html
-├── assets/{images,icons}/
+├── index.html
+├── student.html
+├── faculty.html
+├── group-details.html
 ├── Dockerfile
-└── README.md
-
+├── README.md
+│
+├── css/
+│   ├── style.css
+│   ├── dashboard.css
+│   ├── forms.css
+│   └── responsive.css
+│
+├── js/
+│   ├── storage.js
+│   ├── common.js
+│   ├── data.js
+│   ├── auth.js
+│   ├── groups.js
+│   ├── projects.js
+│   ├── marks.js
+│   ├── presentations.js
+│   ├── requests.js
+│   ├── notifications.js
+│   ├── announcements.js
+│   ├── student.js
+│   └── faculty.js
+│
+└── assets/
+    ├── images/    (empty)
+    └── icons/     (empty)
 
 ## Resetting the Demo Data
 
