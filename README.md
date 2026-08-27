@@ -190,6 +190,7 @@ no other file talks to `localStorage` directly.
 ## File Structure
 
 CDAD/
+│
 ├── index.html
 ├── student.html
 ├── faculty.html
@@ -219,8 +220,8 @@ CDAD/
 │   └── faculty.js
 │
 └── assets/
-    ├── images/    (empty)
-    └── icons/     (empty)
+    ├── images/
+    └── icons/
 
 ## Resetting the Demo Data
 
