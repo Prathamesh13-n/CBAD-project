@@ -15,6 +15,14 @@ function getProject(displayId) {
 function projectForGroup(groupDisplayId) {
   return allProjects().find((p) => p.group === groupDisplayId) || null;
 }
+/** Returns every project that has a submission attached, newest first.
+    Used by the faculty Submissions Hub so nothing requires clicking
+    into each project individually. */
+function allSubmissions() {
+  return allProjects()
+    .filter((p) => p.submission)
+    .sort((a, b) => new Date(b.submission.submittedAt) - new Date(a.submission.submittedAt));
+}
 
 function createProject(data) {
   const displayId = nextSequentialId(CDAD_KEYS.PROJECTS, 'P', 2);
@@ -24,6 +32,7 @@ function createProject(data) {
     displayId,
     title: data.title,
     description: data.description || '',
+    techStack: data.techStack || '',
     group: data.group || '',
     teamLeader: data.teamLeader || '',
     startDate: data.startDate || new Date().toISOString(),
@@ -122,7 +131,22 @@ function submitProjectWork(projectId, { link, note, submittedBy }) {
   logActivity(`${submittedBy} submitted work for project ${project.displayId}`);
   return findData(CDAD_KEYS.PROJECTS, projectId);
 }
-
+/** Faculty asks a group to submit their project — sends a notification straight
+    to that group, with an optional custom message (e.g. a deadline reminder). */
+function requestSubmission(projectId, message) {
+  const project = findData(CDAD_KEYS.PROJECTS, projectId);
+  if (!project) return null;
+  createNotification({
+    title: 'Submission Requested',
+    message: message && message.trim()
+      ? message.trim()
+      : `Faculty has requested your final submission for ${project.title} (${project.displayId}). Please submit as soon as your work is ready.`,
+    type: 'request',
+    recipient: project.group || 'all-students'
+  });
+  logActivity(`Submission requested from group ${project.group} for project ${project.displayId}`);
+  return project;
+}
 /** Faculty approves or rejects a pending submission. */
 function reviewProjectSubmission(projectId, decision, facultyNote) {
   const project = findData(CDAD_KEYS.PROJECTS, projectId);

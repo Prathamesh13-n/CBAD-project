@@ -22,6 +22,7 @@
     <button class="nav-link" data-view="projects"><span class="nav-link__icon">◧</span> Projects</button>
     <button class="nav-link" data-view="marks"><span class="nav-link__icon">▤</span> Marks</button>
     <button class="nav-link" data-view="presentations"><span class="nav-link__icon">◈</span> Presentations</button>
+    <button class="nav-link" data-view="submissions"><span class="nav-link__icon">☑</span> Submissions</button>
     <button class="nav-link" data-view="requests"><span class="nav-link__icon">✎</span> Requests</button>
     <button class="nav-link" data-view="notifications"><span class="nav-link__icon">◔</span> Notifications <span class="nav-link__badge" id="sidebarNotifBadge" style="display:none;"></span></button>
     <button class="nav-link" data-view="announcements"><span class="nav-link__icon">✉</span> Announcements</button>
@@ -57,7 +58,11 @@
     <section class="view" id="view-students">
       <div class="topbar">
         <div><h1>Students Overview</h1><div class="topbar__sub">Manage every student record</div></div>
-        <div class="topbar__actions"><button class="btn btn--primary" id="addStudentBtn">+ Add Student</button></div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="importStudentsBtn">Import CSV</button>
+          <button class="btn btn--danger" id="deleteAllStudentsBtn">Delete All</button>
+          <button class="btn btn--primary" id="addStudentBtn">+ Add Student</button>
+        </div>
       </div>
       <div class="section">
         <div class="filter-bar">
@@ -127,6 +132,30 @@
       </div>
     </section>
 
+    <!-- SUBMISSIONS HUB -->
+    <section class="view" id="view-submissions">
+      <div class="topbar">
+        <div><h1>Submissions</h1><div class="topbar__sub">Every project submission in one place — no need to open each project individually</div></div>
+      </div>
+      <div class="section">
+        <div class="filter-bar">
+          <select id="submissionStatusFilter">
+            <option value="">All Statuses</option>
+            <option value="Pending Review">Pending Review</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <span class="faint" id="submissionCountLabel" style="font-size:12.5px;"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Project</th><th>Group</th><th>Submitted By</th><th>Submitted On</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="submissionsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- REQUESTS -->
     <section class="view" id="view-requests">
       <div class="topbar"><div><h1>Requests</h1><div class="topbar__sub">Respond to student requests</div></div></div>
@@ -138,6 +167,11 @@
         <div class="section__head"><h3>Student-to-Student Requests (Monitor)</h3></div>
         <p class="field-hint" style="margin-bottom:12px;">Students manage these directly with each other — shown here for oversight.</p>
         <div id="peerRequestsMonitor"></div>
+      </div>
+      <div class="section">
+        <div class="section__head"><h3>Group Join Requests (Monitor)</h3></div>
+        <p class="field-hint" style="margin-bottom:12px;">Students send these straight to a group's leader, who accepts or rejects them directly — shown here for oversight.</p>
+        <div id="groupJoinRequestsMonitor"></div>
       </div>
     </section>
 

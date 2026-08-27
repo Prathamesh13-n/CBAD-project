@@ -7,7 +7,7 @@
    the app is hardcoded — every screen reads from these keys.
    ============================================================ */
 
-const SEED_VERSION = 'roster-2026-08-hanfa-parth-prathamesh-v1';
+const SEED_VERSION = 'roster-2026-08-hanfa-parth-prathamesh-v2';
 
 function seedIfEmpty() {
   const stored = localStorage.getItem(CDAD_KEYS.SEEDED);
@@ -25,7 +25,7 @@ function seedIfEmpty() {
     {
       id: generateId('FAC'),
       displayId: 'FAC001',
-      name: 'Dr. Meera Nair',
+      name: ' Prof. Vilas Khedekar ',
       email: 'faculty@cdad.edu',
       password: 'faculty123',
       phone: '9812345670',
@@ -222,7 +222,7 @@ function seedIfEmpty() {
       id: generateId('ANN'),
       title: 'Mid-term project reviews next week',
       message: 'All groups must submit a progress report before the review.',
-      author: 'Dr. Meera Nair',
+      author: ' Prof. Vilas Khedekar ',
       date: iso(-1),
       priority: 'Important',
       status: 'Active'

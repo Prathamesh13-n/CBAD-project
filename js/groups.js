@@ -172,6 +172,23 @@ function respondToGroupJoinRequest(requestId, accept) {
     addMember(req.groupId, req.from);
   }
 
+  function leaveGroup(studentDisplayId) {
+  const student = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId === studentDisplayId);
+  if (!student || !student.group) return { ok: false, error: 'You are not in a group.' };
+  const group = getGroup(student.group);
+  if (!group) return { ok: false, error: 'Group not found.' };
+
+  if ((group.members || []).length <= 1) {
+    deleteGroup(group.id);
+    logActivity(`${studentDisplayId} left and disbanded group ${group.displayId} (last member)`);
+    return { ok: true, disbanded: true, groupDisplayId: group.displayId };
+  }
+
+  removeMember(group.id, studentDisplayId);
+  logActivity(`${studentDisplayId} left group ${group.displayId}`);
+  return { ok: true, disbanded: false, groupDisplayId: group.displayId };
+}
+
   createNotification({
     title: `Group Join Request ${status}`,
     message: accept

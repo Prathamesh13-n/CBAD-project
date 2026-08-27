@@ -62,6 +62,7 @@ function renderAll() {
   renderCreateGroupTab();
   renderProjectPanel();
   renderProgressPanel();
+  renderSubmissionTab();
   renderGithub();
   renderMarksPage();
   renderPresentation();
@@ -69,6 +70,7 @@ function renderAll() {
   renderRequests();
   renderNotifications();
   renderAnnouncements();
+  
 }
 
 function avatarHtml(person) {
@@ -356,7 +358,7 @@ function renderGroupPanel() {
       <div><div class="faint" style="font-size:11px; text-transform:uppercase;">Progress</div><div style="font-size:13.5px;">${group.progress || 0}%</div></div>
     </div>
     <h4 style="font-size:13.5px; margin-bottom:10px;">Members</h4>
-    <div class="card-grid">
+    <div class="card-grid" style="margin-bottom:20px;">
       ${members.map((s) => `
         <div class="card">
           <div class="card__top">
@@ -367,7 +369,23 @@ function renderGroupPanel() {
             ${s.displayId === group.teamLeader ? '<span class="badge badge--warn">Leader</span>' : ''}
           </div>
         </div>`).join('')}
-    </div>`;
+    </div>
+    <button class="btn btn--danger btn--sm" id="leaveGroupBtn">Leave Group</button>`;
+
+  document.getElementById('leaveGroupBtn').addEventListener('click', () => {
+    const warning = memberCount(group) <= 1
+      ? `You're the last member of ${group.displayId}. Leaving will disband the group entirely.`
+      : group.teamLeader === ME.displayId
+        ? `You're the leader of ${group.displayId}. Leaving will pass leadership to another member.`
+        : `Leave ${group.displayId} — ${group.name}?`;
+    confirmDelete(warning, () => {
+      const result = leaveGroup(ME.displayId);
+      if (!result.ok) { showToast(result.error, 'error'); return; }
+      showToast(result.disbanded ? 'You left and the group was disbanded' : 'You left the group', 'success');
+      renderAll();
+      showView('creategroup');
+    });
+  });
 }
 
 /* ================= Create Group tab (create OR join by leader's ID) ================= */
@@ -379,30 +397,38 @@ function renderCreateGroupTab() {
 
   let html = '';
 
-  if (!myGroup) {
-    html += `
-      <div class="section" style="border-left: 3px solid var(--blue);">
-        <p style="font-size:13.5px; margin:0;"><strong>You need a group to continue.</strong> Create a new group below, or find a leader by their Student ID and send a join request. The rest of the dashboard unlocks once you're in a group.</p>
-      </div>`;
-  }
-
-  // If I lead a group, show incoming join requests right here.
-  if (amLeader) {
-    const received = joinRequestsReceivedBy(ME.displayId);
-    html += `
-      <div class="section">
-        <div class="section__head"><h3>Requests to Join Your Group</h3>${received.length ? `<span class="badge badge--warn">${received.length} pending</span>` : ''}</div>
-        ${received.length ? received.map(joinRequestRow).join('') : emptyState('No pending join requests right now.')}
-      </div>`;
-  }
-
   if (myGroup) {
+    // If I lead this group, show incoming join requests here too.
+    if (amLeader) {
+      const received = joinRequestsReceivedBy(ME.displayId);
+      html += `
+        <div class="section">
+          <div class="section__head"><h3>Requests to Join Your Group</h3>${received.length ? `<span class="badge badge--warn">${received.length} pending</span>` : ''}</div>
+          ${received.length ? received.map(joinRequestRow).join('') : emptyState('No pending join requests right now.')}
+        </div>`;
+    }
+
     html += `
       <div class="section">
-        ${emptyState(`You're already in ${myGroup.displayId} — ${myGroup.name}. Leave from Faculty if you need to switch groups.`)}
+        <p style="font-size:13.5px; margin-bottom:14px;">You're already in <strong>${escapeHtml(myGroup.displayId)} — ${escapeHtml(myGroup.name)}</strong>. Go to <a href="javascript:void(0)" onclick="showView('group')">My Group</a> to see members, or leave it below to create/join a different one.</p>
+        <button class="btn btn--danger btn--sm" id="leaveGroupFromTabBtn">Leave Group</button>
       </div>`;
     host.innerHTML = html;
     wireCreateGroupTabEvents(host);
+    const leaveBtn = document.getElementById('leaveGroupFromTabBtn');
+    if (leaveBtn) leaveBtn.addEventListener('click', () => {
+      const warning = memberCount(myGroup) <= 1
+        ? `You're the last member of ${myGroup.displayId}. Leaving will disband the group entirely.`
+        : amLeader
+          ? `You're the leader of ${myGroup.displayId}. Leaving will pass leadership to another member.`
+          : `Leave ${myGroup.displayId} — ${myGroup.name}?`;
+      confirmDelete(warning, () => {
+        const result = leaveGroup(ME.displayId);
+        if (!result.ok) { showToast(result.error, 'error'); return; }
+        showToast(result.disbanded ? 'You left and the group was disbanded' : 'You left the group', 'success');
+        renderAll();
+      });
+    });
     return;
   }
 
@@ -454,7 +480,6 @@ function renderCreateGroupTab() {
   host.innerHTML = html;
   wireCreateGroupTabEvents(host);
 }
-
 function wireCreateGroupTabEvents(host) {
   const createForm = host.querySelector('#createGroupTabForm');
   if (createForm) {
@@ -559,25 +584,170 @@ function renderProjectPanel() {
   if (!host) return;
   const group = getGroup(ME.group);
   const project = group ? getProject(group.project) : null;
-  if (!project) { host.innerHTML = emptyState('No project assigned to your group yet.'); return; }
+  const amLeader = group && group.teamLeader === ME.displayId;
+
+  if (!project) {
+    if (!group) { host.innerHTML = emptyState('You need a group before you can create or view a project.'); return; }
+    if (amLeader) {
+      host.innerHTML = `
+        ${emptyState('Your group has no project yet. As team leader, you can create one.')}
+        <div style="text-align:center; margin-top:-10px;">
+          <button class="btn btn--primary" id="createMyProjectBtn">+ Create Project</button>
+        </div>`;
+      document.getElementById('createMyProjectBtn').addEventListener('click', () => openCreateMyProjectModal(group));
+    } else {
+      host.innerHTML = emptyState(`Your group has no project yet. Your team leader (${escapeHtml(group.teamLeader || 'not set')}) can create one, or faculty can assign one.`);
+    }
+    return;
+  }
+
   host.innerHTML = `
     <div class="section__head">
       <div><span class="faint mono" style="font-size:11px;">${escapeHtml(project.displayId)}</span><h3>${escapeHtml(project.title)}</h3></div>
-      <span class="badge ${statusBadgeClass(project.status)}">${escapeHtml(project.status)}</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="badge ${statusBadgeClass(project.status)}">${escapeHtml(project.status)}</span>
+        <button class="btn btn--ghost btn--sm" id="editMyProjectBtn">Edit ✎</button>
+      </div>
     </div>
-    <p style="font-size:13.5px; color:var(--ink-soft); margin-bottom:18px;">${escapeHtml(project.description)}</p>
+    <p style="font-size:13.5px; color:var(--ink-soft); margin-bottom:18px;">${escapeHtml(project.description) || 'No description yet.'}</p>
     <div class="form-grid">
       ${profileField('Group', project.group)}
       ${profileField('Team Leader', project.teamLeader)}
       ${profileField('Start Date', formatDate(project.startDate))}
       ${profileField('Deadline', formatDate(project.deadline))}
+      ${profileField('Tools / Tech Stack', project.techStack || '—')}
       ${profileField('Repository', project.repoName)}
-      ${profileField('Branch', project.branch)}
     </div>
     <div style="margin-top:10px;">
       <div class="card__progress-label"><span>Overall Progress</span><span>${project.progress}%</span></div>
       <div class="bar-track"><div class="bar-fill" style="width:${project.progress}%"></div></div>
-    </div>`;
+    </div>
+    <p class="field-hint" style="margin-top:14px;">Group, leader, and deadline are set by faculty. You can edit the title, description, and tools used.</p>`;
+
+  document.getElementById('editMyProjectBtn').addEventListener('click', () => openEditMyProjectModal(project));
+}
+
+function openCreateMyProjectModal(group) {
+  openModal('Create Project', `
+    <form id="createMyProjectForm">
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Project Title</label>
+        <input name="title" required placeholder="e.g. Smart Campus Attendance System">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Description</label>
+        <textarea name="description" placeholder="What is this project about?"></textarea>
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Tools / Tech Stack</label>
+        <input name="techStack" placeholder="e.g. React, Node.js, MongoDB">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>GitHub URL</label>
+        <input name="githubUrl" type="url" placeholder="https://github.com/your-org/your-repo">
+      </div>
+      <div class="form-grid" style="margin-bottom:14px;">
+        <div class="field">
+          <label>Repository Name</label>
+          <input name="repoName" placeholder="e.g. smart-attendance">
+        </div>
+        <div class="field">
+          <label>Branch</label>
+          <input name="branch" placeholder="main">
+        </div>
+      </div>
+      <div class="field full">
+        <label>Expected Deadline (optional)</label>
+        <input type="date" name="deadline">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="cancelCreateMyProject">Cancel</button>
+        <button type="submit" class="btn btn--primary">Create Project</button>
+      </div>
+    </form>
+  `, {
+    onMount: () => {
+      document.getElementById('cancelCreateMyProject').addEventListener('click', closeModal);
+      document.getElementById('createMyProjectForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (group.project) { showToast('This group already has a project.', 'error'); closeModal(); return; }
+        const fd = new FormData(e.target);
+        const project = createProject({
+          title: fd.get('title').trim(),
+          description: fd.get('description').trim(),
+          techStack: fd.get('techStack').trim(),
+          githubUrl: fd.get('githubUrl').trim(),
+          repoName: fd.get('repoName').trim(),
+          branch: fd.get('branch').trim() || 'main',
+          group: group.displayId,
+          teamLeader: group.teamLeader,
+          deadline: fd.get('deadline') ? new Date(fd.get('deadline')).toISOString() : '',
+          status: 'Active'
+        });
+        logActivity(`${ME.displayId} created project ${project.displayId} for group ${group.displayId}`);
+        closeModal();
+        showToast('Project created', 'success');
+        renderAll();
+      });
+    }
+  });
+}
+
+function openEditMyProjectModal(project) {
+  openModal('Edit Project Details', `
+    <form id="editMyProjectForm">
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Project Title</label>
+        <input name="title" required value="${escapeHtml(project.title)}">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Description</label>
+        <textarea name="description" placeholder="What is this project about?">${escapeHtml(project.description || '')}</textarea>
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Tools / Tech Stack Used</label>
+        <input name="techStack" placeholder="e.g. React, Node.js, MongoDB, Python" value="${escapeHtml(project.techStack || '')}">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>GitHub URL</label>
+        <input name="githubUrl" type="url" placeholder="https://github.com/your-org/your-repo" value="${escapeHtml(project.githubUrl || '')}">
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Repository Name</label>
+          <input name="repoName" placeholder="e.g. smart-attendance" value="${escapeHtml(project.repoName || '')}">
+        </div>
+        <div class="field">
+          <label>Branch</label>
+          <input name="branch" placeholder="main" value="${escapeHtml(project.branch || 'main')}">
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="cancelEditMyProject">Cancel</button>
+        <button type="submit" class="btn btn--primary">Save Changes</button>
+      </div>
+    </form>
+  `, {
+    onMount: () => {
+      document.getElementById('cancelEditMyProject').addEventListener('click', closeModal);
+      document.getElementById('editMyProjectForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        editProject(project.id, {
+          title: fd.get('title').trim(),
+          description: fd.get('description').trim(),
+          techStack: fd.get('techStack').trim(),
+          githubUrl: fd.get('githubUrl').trim(),
+          repoName: fd.get('repoName').trim(),
+          branch: fd.get('branch').trim() || 'main'
+        });
+        logActivity(`${ME.displayId} updated project ${project.displayId} details`);
+        closeModal();
+        showToast('Project details updated', 'success');
+        renderAll();
+      });
+    }
+  });
 }
 
 /* ================= Progress ================= */
@@ -609,9 +779,29 @@ function renderProgressPanel() {
 
   renderSubmissionBlock(project);
 }
+/* ================= Submission tab (dedicated page) ================= */
+function renderSubmissionTab() {
+  const host = document.getElementById('submissionTabPanel');
+  if (!host) return;
+  const group = getGroup(ME.group);
+  const project = group ? getProject(group.project) : null;
 
-function renderSubmissionBlock(project) {
-  const host = document.getElementById('submissionBlock');
+  if (!project) {
+    host.innerHTML = emptyState('You need a project before you can submit anything. Check My Project.');
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="section__head">
+      <div><span class="faint mono" style="font-size:11px;">${escapeHtml(project.displayId)}</span><h3>${escapeHtml(project.title)}</h3></div>
+    </div>
+    <p class="field-hint" style="margin-bottom:18px;">Submit your finished work here for faculty to review. You can update your submission any time until it's approved.</p>
+    <div id="submissionTabBlock" style="padding-top:6px;"></div>`;
+
+  renderSubmissionBlock(project, 'submissionTabBlock');
+}
+function renderSubmissionBlock(project, hostId) {
+  const host = document.getElementById(hostId || 'submissionBlock');
   if (!host) return;
   const sub = project.submission;
 
@@ -619,8 +809,8 @@ function renderSubmissionBlock(project) {
     host.innerHTML = `
       <h4 style="font-size:13.5px; margin-bottom:10px;">Final Submission</h4>
       <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Once your project is ready, submit a link (repository, drive folder, etc.) and a short note for faculty to review.</p>
-      <button class="btn btn--primary btn--sm" id="submitProjectBtn">Submit Project</button>`;
-    document.getElementById('submitProjectBtn').addEventListener('click', () => openSubmitProjectModal(project));
+      <button class="btn btn--primary btn--sm" data-submit-project-btn>Submit Project</button>`;
+    host.querySelector('[data-submit-project-btn]').addEventListener('click', () => openSubmitProjectModal(project));
     return;
   }
 
@@ -633,9 +823,9 @@ function renderSubmissionBlock(project) {
       <div class="list-item__body faint">Submitted by ${escapeHtml(sub.submittedBy)} on ${formatDateTime(sub.submittedAt)}</div>
       ${sub.facultyNote ? `<div class="list-item__body"><strong>Faculty note:</strong> ${escapeHtml(sub.facultyNote)}</div>` : ''}
     </div>
-    ${sub.status !== 'Approved' ? `<button class="btn btn--ghost btn--sm" id="resubmitProjectBtn">${sub.status === 'Rejected' ? 'Resubmit' : 'Update Submission'}</button>` : ''}`;
+    ${sub.status !== 'Approved' ? `<button class="btn btn--ghost btn--sm" data-resubmit-project-btn>${sub.status === 'Rejected' ? 'Resubmit' : 'Update Submission'}</button>` : ''}`;
 
-  const resubmitBtn = document.getElementById('resubmitProjectBtn');
+  const resubmitBtn = host.querySelector('[data-resubmit-project-btn]');
   if (resubmitBtn) resubmitBtn.addEventListener('click', () => openSubmitProjectModal(project));
 }
 
@@ -686,15 +876,58 @@ function renderGithub() {
     <div class="card">
       <div class="card__top">
         <div>
-          <div class="card__title mono">${escapeHtml(project.repoName)}</div>
+          <div class="card__title mono">${escapeHtml(project.repoName) || 'No repository name set'}</div>
           <div class="card__meta">Branch: <span class="mono">${escapeHtml(project.branch)}</span></div>
         </div>
+        <button class="btn btn--ghost btn--sm" id="editGithubBtn">Edit ✎</button>
       </div>
       <p style="font-size:13px; color:var(--ink-soft); word-break:break-all;">${escapeHtml(project.githubUrl) || 'No URL set'}</p>
       <div class="card__actions">
         <a class="btn btn--primary btn--sm" href="${escapeHtml(project.githubUrl || '#')}" target="_blank" rel="noopener">Open Repository ↗</a>
       </div>
     </div>`;
+
+  document.getElementById('editGithubBtn').addEventListener('click', () => openEditGithubModal(project));
+}
+
+function openEditGithubModal(project) {
+  openModal('Edit GitHub Repository', `
+    <form id="editGithubForm">
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Repository Name</label>
+        <input name="repoName" placeholder="e.g. smart-attendance" value="${escapeHtml(project.repoName || '')}">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>GitHub URL</label>
+        <input name="githubUrl" type="url" placeholder="https://github.com/your-org/your-repo" value="${escapeHtml(project.githubUrl || '')}">
+      </div>
+      <div class="field full">
+        <label>Branch</label>
+        <input name="branch" placeholder="main" value="${escapeHtml(project.branch || 'main')}">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="cancelEditGithub">Cancel</button>
+        <button type="submit" class="btn btn--primary">Save Changes</button>
+      </div>
+    </form>
+  `, {
+    onMount: () => {
+      document.getElementById('cancelEditGithub').addEventListener('click', closeModal);
+      document.getElementById('editGithubForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        editProject(project.id, {
+          repoName: fd.get('repoName').trim(),
+          githubUrl: fd.get('githubUrl').trim(),
+          branch: fd.get('branch').trim() || 'main'
+        });
+        logActivity(`${ME.displayId} updated GitHub link for project ${project.displayId}`);
+        closeModal();
+        showToast('GitHub repository updated', 'success');
+        renderAll();
+      });
+    }
+  });
 }
 
 /* ================= Marks page (Evaluation Summary + Donut + Trend + Details) ================= */

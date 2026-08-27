@@ -17,6 +17,20 @@ document.addEventListener('DOMContentLoaded', () => {
   renderAll();
 });
 
+// Live sync across tabs: a student submitting work, requesting a group,
+// etc. in another tab should show up here without a manual reload.
+// If a reseed or logout in another tab invalidated this session, redirect
+// to login instead of leaving FAC null (which crashed every click before).
+window.addEventListener('storage', () => {
+  const updated = currentFacultyRecord();
+  if (updated) {
+    FAC = updated;
+    renderAll();
+  } else {
+    logout();
+  }
+});
+
 function wireSidebarNav() {
   document.querySelectorAll('.nav-link[data-view]').forEach((btn) => {
     btn.addEventListener('click', () => showView(btn.dataset.view));
@@ -38,6 +52,8 @@ const STUDENTS_PAGE_SIZE = 5;
 function wireStaticButtons() {
   const map = {
     addStudentBtn: openAddStudentModal,
+    importStudentsBtn: openImportStudentsModal,
+    deleteAllStudentsBtn: confirmDeleteAllStudents,
     addGroupBtn: openAddGroupModal,
     addProjectBtn: openAddProjectModal,
     addPresentationBtn: openAddPresentationModal,
@@ -73,6 +89,23 @@ function exportStudentsCsv() {
   showToast('Students exported', 'success');
 }
 
+/** Wipes every student record and cleans up dangling references in groups
+    (members/leader) so nothing points at a student that no longer exists.
+    Marks, requests, and notifications tied to deleted students are left in
+    place (they just become orphaned/inert) rather than cascading further. */
+function confirmDeleteAllStudents() {
+  const count = getData(CDAD_KEYS.STUDENTS).length;
+  if (count === 0) { showToast('There are no students to delete.', 'info'); return; }
+  confirmDelete(`Delete all ${count} students? Every group's member list and leader will also be cleared. This cannot be undone.`, () => {
+    saveData(CDAD_KEYS.STUDENTS, []);
+    const groups = getData(CDAD_KEYS.GROUPS).map((g) => Object.assign({}, g, { members: [], teamLeader: '' }));
+    saveData(CDAD_KEYS.GROUPS, groups);
+    logActivity(`Deleted all ${count} students and cleared group memberships`);
+    showToast(`Deleted ${count} students`, 'success');
+    renderAll();
+  });
+}
+
 function renderAll() {
   renderTopbar();
   renderSidebarUser();
@@ -82,6 +115,7 @@ function renderAll() {
   renderProjects();
   renderMarksTable();
   renderPresentations();
+  renderSubmissionsHub();
   renderRequests();
   renderNotifications();
   renderAnnouncements();
@@ -258,6 +292,159 @@ function renderStudentsPagination(total, totalPages) {
 
 function openAddStudentModal() { studentFormModal('Add Student', null); }
 function openEditStudentModal(id) { studentFormModal('Edit Student', findData(CDAD_KEYS.STUDENTS, id)); }
+
+/* ================= Bulk import students from CSV ================= */
+/** Minimal dependency-free CSV parser. Handles quoted fields and commas inside quotes. */
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  const pushField = () => { row.push(field); field = ''; };
+  const pushRow = () => { pushField(); rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') pushField();
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') pushRow();
+      else field += c;
+    }
+  }
+  if (field.length || row.length) pushRow();
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ''));
+}
+
+/** Finds the column index whose header loosely matches any of the given aliases. */
+function findColumn(headers, aliases) {
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normHeaders = headers.map(norm);
+  for (const alias of aliases) {
+    const idx = normHeaders.indexOf(norm(alias));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+function openImportStudentsModal() {
+  openModal('Import Students from CSV', `
+    <p class="field-hint" style="margin-bottom:14px;">Upload a CSV with columns for Enrollment No. and Name (matches the roster template — Email, Phone, Group, and Password columns are optional). Existing Student IDs are skipped, not overwritten.</p>
+    <div class="field full" style="margin-bottom:14px;">
+      <label>CSV File</label>
+      <input type="file" id="csvFileInput" accept=".csv,text/csv">
+    </div>
+    <div id="importPreview" style="margin-bottom:14px;"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn--ghost" id="cancelImport">Cancel</button>
+      <button type="button" class="btn btn--primary" id="confirmImportBtn" disabled>Import Students</button>
+    </div>
+  `, {
+    onMount: () => {
+      let parsedRows = [];
+      document.getElementById('cancelImport').addEventListener('click', closeModal);
+
+      document.getElementById('csvFileInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const rows = parseCsv(evt.target.result);
+          if (rows.length < 2) {
+            document.getElementById('importPreview').innerHTML = `<div class="login-error show" style="display:block;">No data rows found in this file.</div>`;
+            return;
+          }
+          const headers = rows[0];
+          const idCol = findColumn(headers, ['ENROLLMENT NO.', 'ENROLLMENT NO', 'ENROLLMENTNO', 'STUDENT ID', 'ID']);
+          const nameCol = findColumn(headers, ['NAME OF STUDENT', 'NAME', 'STUDENT NAME']);
+          const emailCol = findColumn(headers, ['EMAIL (optional)', 'EMAIL']);
+          const phoneCol = findColumn(headers, ['PHONE (optional)', 'PHONE', 'PHONE NUMBER']);
+          const groupCol = findColumn(headers, ['GROUP (optional)', 'GROUP']);
+          const passCol = findColumn(headers, ['PASSWORD (optional)', 'PASSWORD']);
+
+          if (idCol === -1 || nameCol === -1) {
+            document.getElementById('importPreview').innerHTML = `<div class="login-error show" style="display:block;">Couldn't find "Enrollment No." and "Name" columns in the header row. Check your CSV matches the template.</div>`;
+            document.getElementById('confirmImportBtn').disabled = true;
+            return;
+          }
+
+          const existingIds = new Set(getData(CDAD_KEYS.STUDENTS).map((s) => s.displayId.toLowerCase()));
+          const dataRows = rows.slice(1);
+          const totalDataRows = dataRows.length;
+
+          const invalidRows = []; // rows missing ID or Name
+          const rawParsed = dataRows.map((r, idx) => {
+            const displayId = (r[idCol] || '').trim();
+            const name = (r[nameCol] || '').trim();
+            if (!displayId || !name) invalidRows.push({ line: idx + 2, displayId, name }); // +2: header is line 1, data starts at line 2
+            return {
+              displayId,
+              name,
+              email: emailCol !== -1 ? (r[emailCol] || '').trim() : '',
+              phone: phoneCol !== -1 ? (r[phoneCol] || '').trim() : '',
+              group: groupCol !== -1 ? (r[groupCol] || '').trim() : '',
+              password: passCol !== -1 ? (r[passCol] || '').trim() : ''
+            };
+          });
+
+          const validRows = rawParsed.filter((r) => r.displayId && r.name);
+          const duplicateRows = validRows.filter((r) => existingIds.has(r.displayId.toLowerCase()));
+          parsedRows = validRows.filter((r) => !existingIds.has(r.displayId.toLowerCase()));
+
+          document.getElementById('importPreview').innerHTML = `
+            <div class="list-item">
+              <div class="list-item__body"><strong>${totalDataRows}</strong> data row(s) found in the file.</div>
+              <div class="list-item__body"><strong>${parsedRows.length}</strong> will be imported.</div>
+              ${invalidRows.length ? `<div class="list-item__body" style="color:var(--red);">${invalidRows.length} row(s) skipped — missing Enrollment No. or Name (line ${invalidRows.slice(0, 8).map((r) => r.line).join(', ')}${invalidRows.length > 8 ? ', …' : ''}).</div>` : ''}
+              ${duplicateRows.length ? `<div class="list-item__body" style="color:var(--orange);">${duplicateRows.length} row(s) skipped — Student ID already exists (${duplicateRows.slice(0, 8).map((r) => escapeHtml(r.displayId)).join(', ')}${duplicateRows.length > 8 ? ', …' : ''}).</div>` : ''}
+              <div class="list-item__body faint">First row to import: ${parsedRows[0] ? escapeHtml(parsedRows[0].displayId) + ' — ' + escapeHtml(parsedRows[0].name) : '—'}</div>
+            </div>`;
+          document.getElementById('confirmImportBtn').disabled = parsedRows.length === 0;
+        };
+        reader.readAsText(file);
+      });
+
+      document.getElementById('confirmImportBtn').addEventListener('click', () => {
+        const existingIds = new Set(getData(CDAD_KEYS.STUDENTS).map((s) => s.displayId.toLowerCase()));
+        let imported = 0;
+        parsedRows.forEach((r) => {
+          if (existingIds.has(r.displayId.toLowerCase())) return;
+          const newStudent = {
+            id: generateId('STU'),
+            displayId: r.displayId,
+            name: r.name,
+            email: r.email || '',
+            password: r.password || 'PASS123',
+            phone: r.phone || '',
+            course: '',
+            year: '',
+            department: '',
+            group: r.group || '',
+            role: 'Member',
+            status: 'Active',
+            avatar: '',
+            connections: []
+          };
+          addData(CDAD_KEYS.STUDENTS, newStudent);
+          if (newStudent.group) {
+            const g = getGroup(newStudent.group);
+            if (g) addMember(g.id, newStudent.displayId);
+          }
+          existingIds.add(r.displayId.toLowerCase());
+          imported++;
+        });
+        logActivity(`Imported ${imported} student(s) from CSV`);
+        closeModal();
+        showToast(`Imported ${imported} student(s)`, 'success');
+        renderAll();
+      });
+    }
+  });
+}
 
 function studentFormModal(title, student) {
   const groups = getData(CDAD_KEYS.GROUPS);
@@ -476,6 +663,7 @@ function renderProjects() {
         <button class="btn btn--ghost btn--sm" data-edit-project="${p.id}">Edit ✎</button>
         <button class="btn btn--ghost btn--sm" data-stage-project="${p.id}">Stages</button>
         ${p.submission && p.submission.status === 'Pending Review' ? `<button class="btn btn--primary btn--sm" data-review-submission="${p.id}">Review Submission</button>` : ''}
+        ${(!p.submission || p.submission.status === 'Rejected') && p.group ? `<button class="btn btn--ghost btn--sm" data-request-submission="${p.id}">Request Submission</button>` : ''}
         <button class="btn btn--danger btn--sm" data-del-project="${p.id}">Delete</button>
       </div>
     </div>`).join('') : emptyState('No projects yet.');
@@ -483,10 +671,37 @@ function renderProjects() {
   host.querySelectorAll('[data-edit-project]').forEach((b) => b.addEventListener('click', () => openEditProjectModal(b.dataset.editProject)));
   host.querySelectorAll('[data-stage-project]').forEach((b) => b.addEventListener('click', () => openStagesModal(b.dataset.stageProject)));
   host.querySelectorAll('[data-review-submission]').forEach((b) => b.addEventListener('click', () => openReviewSubmissionModal(b.dataset.reviewSubmission)));
+  host.querySelectorAll('[data-request-submission]').forEach((b) => b.addEventListener('click', () => openRequestSubmissionModal(b.dataset.requestSubmission)));
   host.querySelectorAll('[data-del-project]').forEach((b) => b.addEventListener('click', () => {
     const p = findData(CDAD_KEYS.PROJECTS, b.dataset.delProject);
     confirmDelete(`Delete project ${p.title} (${p.displayId})?`, () => { deleteProject(p.id); showToast('Project deleted', 'success'); renderAll(); });
   }));
+}
+
+function openRequestSubmissionModal(projectId) {
+  const project = findData(CDAD_KEYS.PROJECTS, projectId);
+  openModal(`Request Submission — ${project.displayId}`, `
+    <p class="field-hint" style="margin-bottom:14px;">This sends a notification straight to group ${escapeHtml(project.group)} asking them to submit their work.</p>
+    <form id="requestSubmissionForm">
+      <div class="field full"><label>Message (optional — a default reminder is used if left blank)</label><textarea name="message" placeholder="e.g. Please submit before Friday's review..."></textarea></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="cancelRequestSubmission">Cancel</button>
+        <button type="submit" class="btn btn--primary">Send Request</button>
+      </div>
+    </form>
+  `, {
+    onMount: () => {
+      document.getElementById('cancelRequestSubmission').addEventListener('click', closeModal);
+      document.getElementById('requestSubmissionForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        requestSubmission(projectId, fd.get('message'));
+        closeModal();
+        showToast('Submission request sent', 'success');
+        renderAll();
+      });
+    }
+  });
 }
 
 function openReviewSubmissionModal(projectId) {
@@ -528,6 +743,46 @@ function openReviewSubmissionModal(projectId) {
   });
 }
 
+/* ================= Submissions Hub — every submission, one place ================= */
+function renderSubmissionsHub() {
+  const host = document.getElementById('submissionsTableBody');
+  if (!host) return;
+
+  const statusFilterEl = document.getElementById('submissionStatusFilter');
+  if (statusFilterEl && !statusFilterEl.dataset.wired) {
+    statusFilterEl.addEventListener('change', renderSubmissionsHub);
+    statusFilterEl.dataset.wired = '1';
+  }
+  const statusFilter = statusFilterEl?.value || '';
+
+  let submissions = allSubmissions();
+  if (statusFilter) submissions = submissions.filter((p) => p.submission.status === statusFilter);
+
+  const countLabel = document.getElementById('submissionCountLabel');
+  if (countLabel) countLabel.textContent = `${submissions.length} submission(s)`;
+
+  host.innerHTML = submissions.length ? submissions.map((p) => {
+    const sub = p.submission;
+    const badgeClass = sub.status === 'Approved' ? 'badge--good' : sub.status === 'Rejected' ? 'badge--bad' : 'badge--warn';
+    return `
+      <tr>
+        <td>
+          <div class="row-name__text"><strong>${escapeHtml(p.title)}</strong><span class="mono">${escapeHtml(p.displayId)}</span></div>
+        </td>
+        <td>${escapeHtml(p.group || '—')}</td>
+        <td>${escapeHtml(sub.submittedBy)}</td>
+        <td>${formatDateTime(sub.submittedAt)}</td>
+        <td><span class="badge ${badgeClass}">${escapeHtml(sub.status)}</span></td>
+        <td class="table-actions">
+          <a class="btn btn--ghost btn--sm" href="${escapeHtml(sub.link || '#')}" target="_blank" rel="noopener">View Link ↗</a>
+          <button class="btn btn--primary btn--sm" data-review-hub="${p.id}">${sub.status === 'Pending Review' ? 'Review' : 'View / Re-review'}</button>
+        </td>
+      </tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="6">No submissions yet.</td></tr>`;
+
+  host.querySelectorAll('[data-review-hub]').forEach((b) => b.addEventListener('click', () => openReviewSubmissionModal(b.dataset.reviewHub)));
+}
+
 function openAddProjectModal() { projectFormModal('Create Project', null); }
 function openEditProjectModal(id) { projectFormModal('Edit Project', findData(CDAD_KEYS.PROJECTS, id)); }
 
@@ -539,6 +794,7 @@ function projectFormModal(title, project) {
       <div class="form-grid">
         <div class="field full"><label>Project Title</label><input name="title" required value="${escapeHtml(project?.title || '')}"></div>
         <div class="field full"><label>Description</label><textarea name="description">${escapeHtml(project?.description || '')}</textarea></div>
+        <div class="field full"><label>Tools / Tech Stack</label><input name="techStack" value="${escapeHtml(project?.techStack || '')}" placeholder="e.g. React, Node.js, MongoDB"></div>
         <div class="field">
           <label>Group</label>
           <select name="group"><option value="">— Unassigned —</option>${groups.map((g) => `<option value="${g.displayId}" ${project?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}</select>
@@ -567,6 +823,7 @@ function projectFormModal(title, project) {
         const fd = new FormData(e.target);
         const fields = {
           title: fd.get('title').trim(), description: fd.get('description').trim(),
+          techStack: fd.get('techStack').trim(),
           group: fd.get('group'), teamLeader: fd.get('teamLeader').trim(),
           startDate: fd.get('startDate') ? new Date(fd.get('startDate')).toISOString() : '',
           deadline: fd.get('deadline') ? new Date(fd.get('deadline')).toISOString() : '',
@@ -794,6 +1051,21 @@ function renderRequests() {
         ${r.message ? `<div class="list-item__body">"${escapeHtml(r.message)}"</div>` : ''}
         <div class="list-item__body faint">${formatDate(r.date)}</div>
       </div>`).join('') : emptyState('No student-to-student requests yet.');
+  }
+
+  // Group join requests (student -> group leader) — read-only oversight list
+  const groupJoinHost = document.getElementById('groupJoinRequestsMonitor');
+  if (groupJoinHost) {
+    const joinReqs = allGroupJoinRequests().sort((a, b) => new Date(b.date) - new Date(a.date));
+    groupJoinHost.innerHTML = joinReqs.length ? joinReqs.map((r) => `
+      <div class="list-item">
+        <div class="list-item__top">
+          <div class="list-item__title">${escapeHtml(r.from)} → ${escapeHtml(r.groupDisplayId)} <span class="faint" style="font-weight:400;">(leader ${escapeHtml(r.to)})</span></div>
+          <span class="badge ${statusBadgeClass(r.status)}">${escapeHtml(r.status)}</span>
+        </div>
+        ${r.message ? `<div class="list-item__body">"${escapeHtml(r.message)}"</div>` : ''}
+        <div class="list-item__body faint">${formatDate(r.date)}</div>
+      </div>`).join('') : emptyState('No group join requests yet.');
   }
 }
 
