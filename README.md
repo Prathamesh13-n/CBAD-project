@@ -188,7 +188,7 @@ All access goes through the shared helpers in `js/storage.js`
 no other file talks to `localStorage` directly.
 
 ## File Structure
-
+```
 CDAD/
 │
 ├── index.html
@@ -222,7 +222,7 @@ CDAD/
 └── assets/
     ├── images/
     └── icons/
-
+```
 ## Resetting the Demo Data
 
 The seed re-runs automatically whenever `SEED_VERSION` in `js/data.js` is
