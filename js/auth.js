@@ -21,6 +21,22 @@ async function attemptLogin(role, studentOrFacultyId, password) {
   return { ok: true, user: data.user };
 }
 
+/**
+ * Self-service password reset. No email is sent — identity is verified
+ * by matching `id` against the email already on file for that account.
+ * Returns { ok, error } — never throws.
+ */
+async function resetPassword(role, id, email, newPassword) {
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, id, email, newPassword })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || 'Could not reset password.' };
+  return { ok: true };
+}
+
 /** The full current-user record (student or faculty shape) plus a `type` field, or null. */
 async function getCurrentUser() {
   const res = await fetch('/api/auth/me', { credentials: 'include' });

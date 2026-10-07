@@ -81,8 +81,13 @@ columns, matching the roster template — Email/Phone/Group/Password columns
 are optional). Every imported student defaults to password `PASS123` unless
 the CSV specifies one.
 
-Change any login ID or password any time from Faculty → Students → **Edit ✎**
-(students cannot change their own password in this build — only faculty can).
+Faculty can change any student's login ID or password any time from Faculty
+→ Students → **Edit ✎**.
+
+Anyone can also reset their own password from the login page's **Forgot
+Password?** link — no email actually gets sent (there's no mail service
+configured), so identity is verified by matching your ID against the email
+already on file for that account, then you set a new password immediately.
 
 ### First login for a new student
 

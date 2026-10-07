@@ -37,11 +37,16 @@ class, so this branch adds a proper backend.
   take a few seconds to show up for you — that's expected, not a bug.
 - **Dockerfile updated** to run the new Node server instead of a static
   nginx container (see "Running with Docker" below).
+- **New: self-service "Forgot Password"** on the login page (it was a
+  dead link before). No email actually gets sent — there's no mail
+  service configured — so you verify it's you by entering your ID and
+  the email already on file for that account, then set a new password
+  immediately.
 
-Nothing about the UI, the workflows, or what you can click changed —
-login, group creation/joining, submissions, marks, notifications, etc. all
-work exactly the same from a user's point of view. Login credentials are
-unchanged too (`FAC001` / `faculty123`, `ADT24SOCB0001` / `PASS123`, etc.).
+Nothing else about the UI or workflows changed — group creation/joining,
+submissions, marks, notifications, etc. all work exactly the same from a
+user's point of view. Login credentials are unchanged too (`FAC001` /
+`faculty123`, `ADT24SOCB0001` / `PASS123`, etc.).
 
 Two small behavior fixes came along with the migration (not new features,
 just bugs the old version had):

@@ -43,6 +43,34 @@ router.post('/login', (req, res) => {
   res.json({ ok: true, user });
 });
 
+/**
+ * Self-service password reset — no email is actually sent (there's no
+ * mail service configured for this project). Identity is verified by
+ * matching the ID against the email already on file for that account;
+ * if they match, the new password is set immediately.
+ */
+router.post('/forgot-password', (req, res) => {
+  const { role, id, email, newPassword } = req.body || {};
+  const idLower = String(id || '').trim().toLowerCase();
+  const emailLower = String(email || '').trim().toLowerCase();
+  const pass = String(newPassword || '').trim();
+
+  if (pass.length < 4) {
+    return res.status(400).json({ ok: false, error: 'New password must be at least 4 characters.' });
+  }
+
+  const table = role === 'faculty' ? 'faculty' : 'students';
+  const row = db.prepare(`SELECT * FROM ${table} WHERE LOWER(display_id) = ?`).get(idLower);
+  if (!row || String(row.email || '').trim().toLowerCase() !== emailLower) {
+    return res.status(401).json({ ok: false, error: 'ID and email do not match our records.' });
+  }
+
+  const passwordHash = bcrypt.hashSync(pass, 10);
+  db.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`).run(passwordHash, row.id);
+  logActivity(`${role === 'faculty' ? 'Faculty' : 'Student'} ${row.display_id} reset their password via Forgot Password`);
+  res.json({ ok: true });
+});
+
 router.post('/logout', (req, res) => {
   const sid = req.cookies[COOKIE_NAME];
   const session = getSession(sid);
