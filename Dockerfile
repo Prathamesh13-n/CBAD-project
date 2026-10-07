@@ -1,20 +1,19 @@
 # CDAD — College Digital Academic Dashboard
-# Single-container static frontend served by Nginx.
+# Single-container Node/Express server: serves the REST API (/api/*)
+# and the static frontend from the same process/port, backed by SQLite.
 
-FROM nginx:alpine
+FROM node:22-alpine
 
-# Remove default Nginx welcome page
-RUN rm -rf /usr/share/nginx/html/*
+WORKDIR /app
 
-# Copy the frontend into Nginx's web root
-COPY index.html /usr/share/nginx/html/
-COPY student.html /usr/share/nginx/html/
-COPY faculty.html /usr/share/nginx/html/
-COPY group-details.html /usr/share/nginx/html/
-COPY css/ /usr/share/nginx/html/css/
-COPY js/ /usr/share/nginx/html/js/
-COPY assets/ /usr/share/nginx/html/assets/
+COPY server/package*.json ./server/
+RUN cd server && npm ci --omit=dev
 
-EXPOSE 80
+COPY server/ ./server/
+COPY index.html student.html faculty.html group-details.html ./
+COPY css/ ./css/
+COPY js/ ./js/
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 3000
+
+CMD ["node", "server/index.js"]

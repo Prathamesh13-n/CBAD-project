@@ -5,22 +5,33 @@
 
 let ME = null;
 
-function refreshMe() {
-  ME = currentStudentRecord();
+async function refreshMe() {
+  ME = await currentStudentRecord();
   return ME;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const user = requireRole('student');
+document.addEventListener('DOMContentLoaded', async () => {
+  const user = await requireRole('student');
   if (!user) return;
-  refreshMe();
+  await refreshMe();
   if (!ME) { logout(); return; }
 
   wireSidebarNav();
   wireLogout();
-  renderAll();
+  await renderAll();
   enforceProfileCompletion();
+  startLiveSync();
 });
+
+/* ================= Live sync (polling) =================
+   Replaces the old same-browser-only LocalStorage 'storage' event:
+   re-fetch and re-render on an interval, and immediately on tab focus. */
+function startLiveSync() {
+  setInterval(() => { renderAll(); }, 15000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') renderAll();
+  });
+}
 
 function wireSidebarNav() {
   document.querySelectorAll('.nav-link[data-view]').forEach((btn) => {
@@ -52,25 +63,24 @@ function updateGroupLockState() {
   if (GROUP_LOCKED) showView('creategroup');
 }
 
-function renderAll() {
-  refreshMe();
+async function renderAll() {
+  await refreshMe();
   updateGroupLockState();
-  renderTopbar();
-  renderOverview();
+  await renderTopbar();
+  await renderOverview();
   renderProfile();
-  renderGroupPanel();
-  renderCreateGroupTab();
-  renderProjectPanel();
-  renderProgressPanel();
-  renderSubmissionTab();
-  renderGithub();
-  renderMarksPage();
-  renderPresentation();
-  renderPeers();
-  renderRequests();
-  renderNotifications();
-  renderAnnouncements();
-  
+  await renderGroupPanel();
+  await renderCreateGroupTab();
+  await renderProjectPanel();
+  await renderProgressPanel();
+  await renderSubmissionTab();
+  await renderGithub();
+  await renderMarksPage();
+  await renderPresentation();
+  await renderPeers();
+  await renderRequests();
+  await renderNotifications();
+  await renderAnnouncements();
 }
 
 function avatarHtml(person) {
@@ -101,27 +111,26 @@ function enforceProfileCompletion() {
   `, {
     blocking: true,
     onMount: () => {
-      document.getElementById('completeProfileForm').addEventListener('submit', (e) => {
+      document.getElementById('completeProfileForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
         const phone = fd.get('phone').trim();
         if (!phone) { showToast('Phone number is required', 'error'); return; }
-        updateData(CDAD_KEYS.STUDENTS, ME.id, {
+        await updateData(CDAD_KEYS.STUDENTS, ME.id, {
           name: fd.get('name').trim(),
           email: fd.get('email').trim(),
           phone
         });
-        logActivity(`Student ${ME.displayId} completed their profile`);
         closeModal();
         showToast('Profile completed', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Topbar ================= */
-function renderTopbar() {
+async function renderTopbar() {
   const welcome = document.getElementById('welcomeMsg');
   if (welcome) welcome.textContent = `Welcome back, ${ME.name.split(' ')[0]} 👋`;
 
@@ -135,7 +144,7 @@ function renderTopbar() {
       </div>`;
   }
 
-  const count = unreadCount({ type: 'student', displayId: ME.displayId });
+  const count = await unreadCount({ type: 'student', displayId: ME.displayId });
   const bellBadge = document.getElementById('notifBadge');
   if (bellBadge) { bellBadge.textContent = count; bellBadge.style.display = count > 0 ? 'flex' : 'none'; }
   const sideBadge = document.getElementById('sidebarNotifBadge');
@@ -143,16 +152,17 @@ function renderTopbar() {
 }
 
 /* ================= Overview (Dashboard) ================= */
-function renderOverview() {
+async function renderOverview() {
   const statsHost = document.getElementById('overviewStats');
   const gridHost = document.getElementById('overviewMainGrid');
   if (!statsHost || !gridHost) return;
 
-  const group = getGroup(ME.group);
-  const project = group ? getProject(group.project) : null;
-  const marksRec = marksForStudent(ME.displayId);
+  const group = await getGroup(ME.group);
+  const project = group ? await getProject(group.project) : null;
+  const marksRec = await marksForStudent(ME.displayId);
   const totals = marksRec ? deriveMarkTotals(marksRec) : null;
-  const pres = group ? presentationsForGroup(group.displayId)[0] : null;
+  const groupPres = group ? await presentationsForGroup(group.displayId) : [];
+  const pres = groupPres[0] || null;
 
   statsHost.innerHTML = `
     <div class="stat-card stat-card--blue">
@@ -217,7 +227,9 @@ function renderOverview() {
       ` : emptyState('No project assigned yet.')}
     </div>`;
 
-  const notifs = notificationsFor({ type: 'student', displayId: ME.displayId }).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  const allNotifs = await notificationsFor({ type: 'student', displayId: ME.displayId });
+  const notifs = allNotifs.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+  const unread = await unreadCount({ type: 'student', displayId: ME.displayId });
   const rightCol = `
     <div class="section">
       <div class="section__head"><h3>Recent Notifications</h3><a class="section__link" href="javascript:void(0)" onclick="showView('notifications')">View All</a></div>
@@ -231,7 +243,7 @@ function renderOverview() {
             </div>
           </div>`).join('') : '<p class="faint" style="font-size:12.5px;">No notifications yet.</p>'}
       </div>
-      <div class="notif-mini-foot">You have ${unreadCount({ type: 'student', displayId: ME.displayId })} unread notifications</div>
+      <div class="notif-mini-foot">You have ${unread} unread notifications</div>
     </div>`;
 
   gridHost.innerHTML = `<div style="display:flex; flex-direction:column;">${leftCol}</div><div>${midCol}</div><div>${rightCol}</div>`;
@@ -314,27 +326,26 @@ function openEditProfileModal() {
   `, {
     onMount: () => {
       document.getElementById('cancelProfileEdit').addEventListener('click', closeModal);
-      document.getElementById('profileForm').addEventListener('submit', (e) => {
+      document.getElementById('profileForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        updateData(CDAD_KEYS.STUDENTS, ME.id, {
+        await updateData(CDAD_KEYS.STUDENTS, ME.id, {
           name: fd.get('name').trim(), email: fd.get('email').trim(),
           phone: fd.get('phone').trim(), avatar: fd.get('avatar').trim()
         });
-        logActivity(`Student ${ME.displayId} updated their profile`);
         closeModal();
         showToast('Profile updated', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= My Group ================= */
-function renderGroupPanel() {
+async function renderGroupPanel() {
   const host = document.getElementById('groupPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
+  const group = await getGroup(ME.group);
   if (!group) {
     host.innerHTML = `
       ${emptyState('You are not assigned to a group yet.')}
@@ -344,7 +355,7 @@ function renderGroupPanel() {
     document.getElementById('createGroupBtn').addEventListener('click', () => showView('creategroup'));
     return;
   }
-  const students = getData(CDAD_KEYS.STUDENTS);
+  const students = await getData(CDAD_KEYS.STUDENTS);
   const members = (group.members || []).map((m) => students.find((s) => s.displayId === m)).filter(Boolean);
   host.innerHTML = `
     <div class="section__head">
@@ -378,21 +389,21 @@ function renderGroupPanel() {
       : group.teamLeader === ME.displayId
         ? `You're the leader of ${group.displayId}. Leaving will pass leadership to another member.`
         : `Leave ${group.displayId} — ${group.name}?`;
-    confirmDelete(warning, () => {
-      const result = leaveGroup(ME.displayId);
+    confirmDelete(warning, async () => {
+      const result = await leaveGroup(ME.displayId);
       if (!result.ok) { showToast(result.error, 'error'); return; }
       showToast(result.disbanded ? 'You left and the group was disbanded' : 'You left the group', 'success');
-      renderAll();
+      await renderAll();
       showView('creategroup');
     });
   });
 }
 
 /* ================= Create Group tab (create OR join by leader's ID) ================= */
-function renderCreateGroupTab() {
+async function renderCreateGroupTab() {
   const host = document.getElementById('createGroupPanel');
   if (!host) return;
-  const myGroup = getGroup(ME.group);
+  const myGroup = await getGroup(ME.group);
   const amLeader = myGroup && myGroup.teamLeader === ME.displayId;
 
   let html = '';
@@ -400,11 +411,12 @@ function renderCreateGroupTab() {
   if (myGroup) {
     // If I lead this group, show incoming join requests here too.
     if (amLeader) {
-      const received = joinRequestsReceivedBy(ME.displayId);
+      const received = await joinRequestsReceivedBy(ME.displayId);
+      const students = await getData(CDAD_KEYS.STUDENTS);
       html += `
         <div class="section">
           <div class="section__head"><h3>Requests to Join Your Group</h3>${received.length ? `<span class="badge badge--warn">${received.length} pending</span>` : ''}</div>
-          ${received.length ? received.map(joinRequestRow).join('') : emptyState('No pending join requests right now.')}
+          ${received.length ? received.map((r) => joinRequestRow(r, students)).join('') : emptyState('No pending join requests right now.')}
         </div>`;
     }
 
@@ -422,19 +434,21 @@ function renderCreateGroupTab() {
         : amLeader
           ? `You're the leader of ${myGroup.displayId}. Leaving will pass leadership to another member.`
           : `Leave ${myGroup.displayId} — ${myGroup.name}?`;
-      confirmDelete(warning, () => {
-        const result = leaveGroup(ME.displayId);
+      confirmDelete(warning, async () => {
+        const result = await leaveGroup(ME.displayId);
         if (!result.ok) { showToast(result.error, 'error'); return; }
         showToast(result.disbanded ? 'You left and the group was disbanded' : 'You left the group', 'success');
-        renderAll();
+        await renderAll();
       });
     });
     return;
   }
 
   // No group yet — show Create + Join by ID + my sent requests.
-  const available = getData(CDAD_KEYS.STUDENTS).filter((s) => s.displayId !== ME.displayId && !s.group);
-  const sentRequests = joinRequestsSentBy(ME.displayId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const allStudents = await getData(CDAD_KEYS.STUDENTS);
+  const available = allStudents.filter((s) => s.displayId !== ME.displayId && !s.group);
+  const sentRequestsRaw = await joinRequestsSentBy(ME.displayId);
+  const sentRequests = sentRequestsRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   html += `
     <div class="dash-grid--2" style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
@@ -483,30 +497,29 @@ function renderCreateGroupTab() {
 function wireCreateGroupTabEvents(host) {
   const createForm = host.querySelector('#createGroupTabForm');
   if (createForm) {
-    createForm.addEventListener('submit', (e) => {
+    createForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (ME.group) { showToast('You are already in a group.', 'error'); return; }
       const fd = new FormData(e.target);
       const enrolled = fd.getAll('members');
-      const group = createGroup({
+      await createGroup({
         name: fd.get('name').trim(),
         teamLeader: ME.displayId,
         members: [ME.displayId, ...enrolled],
         status: 'Active'
       });
-      logActivity(`Student ${ME.displayId} created group ${group.displayId} with ${enrolled.length} member(s) enrolled`);
       showToast('Group created — you are the leader', 'success');
-      renderAll();
+      await renderAll();
       showView('creategroup');
     });
   }
 
   const lookupBtn = host.querySelector('#joinLookupBtn');
   if (lookupBtn) {
-    lookupBtn.addEventListener('click', () => {
+    lookupBtn.addEventListener('click', async () => {
       const id = host.querySelector('#joinLookupId').value.trim();
       const resultHost = host.querySelector('#joinLookupResult');
-      const lookup = findLeaderAndGroupById(id);
+      const lookup = await findLeaderAndGroupById(id);
       if (!lookup.ok) {
         resultHost.innerHTML = `<div class="login-error show" style="display:block;">${escapeHtml(lookup.error)}</div>`;
         return;
@@ -525,34 +538,34 @@ function wireCreateGroupTabEvents(host) {
           <div class="field full" style="margin-top:10px;"><textarea id="joinRequestMessage" placeholder="Optional message to include..."></textarea></div>
           <button type="button" class="btn btn--primary btn--sm" id="sendJoinRequestBtn" style="margin-top:8px;">Send Join Request</button>
         </div>`;
-      resultHost.querySelector('#sendJoinRequestBtn').addEventListener('click', () => {
+      resultHost.querySelector('#sendJoinRequestBtn').addEventListener('click', async () => {
         const message = resultHost.querySelector('#joinRequestMessage').value.trim();
-        const result = sendGroupJoinRequest(ME.displayId, id, message);
+        const result = await sendGroupJoinRequest(ME.displayId, id, message);
         if (!result.ok) { showToast(result.error, 'error'); return; }
         showToast(`Request sent to ${result.leaderName}`, 'success');
-        renderAll();
+        await renderAll();
         showView('creategroup');
       });
     });
   }
 
-  host.querySelectorAll('[data-accept-join]').forEach((b) => b.addEventListener('click', () => {
-    const result = respondToGroupJoinRequest(b.dataset.acceptJoin, true);
+  host.querySelectorAll('[data-accept-join]').forEach((b) => b.addEventListener('click', async () => {
+    const result = await respondToGroupJoinRequest(b.dataset.acceptJoin, true);
     if (!result.ok) { showToast(result.error, 'error'); return; }
     showToast('Student added to your group', 'success');
-    renderAll();
+    await renderAll();
     showView('creategroup');
   }));
-  host.querySelectorAll('[data-reject-join]').forEach((b) => b.addEventListener('click', () => {
-    respondToGroupJoinRequest(b.dataset.rejectJoin, false);
+  host.querySelectorAll('[data-reject-join]').forEach((b) => b.addEventListener('click', async () => {
+    await respondToGroupJoinRequest(b.dataset.rejectJoin, false);
     showToast('Request rejected', 'info');
-    renderAll();
+    await renderAll();
     showView('creategroup');
   }));
 }
 
-function joinRequestRow(r) {
-  const from = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId === r.from);
+function joinRequestRow(r, students) {
+  const from = students.find((s) => s.displayId === r.from);
   return `
     <div class="list-item unread">
       <div class="list-item__top">
@@ -579,11 +592,11 @@ function sentJoinRequestRow(r) {
 }
 
 /* ================= My Project ================= */
-function renderProjectPanel() {
+async function renderProjectPanel() {
   const host = document.getElementById('projectPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
-  const project = group ? getProject(group.project) : null;
+  const group = await getGroup(ME.group);
+  const project = group ? await getProject(group.project) : null;
   const amLeader = group && group.teamLeader === ME.displayId;
 
   if (!project) {
@@ -668,11 +681,11 @@ function openCreateMyProjectModal(group) {
   `, {
     onMount: () => {
       document.getElementById('cancelCreateMyProject').addEventListener('click', closeModal);
-      document.getElementById('createMyProjectForm').addEventListener('submit', (e) => {
+      document.getElementById('createMyProjectForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (group.project) { showToast('This group already has a project.', 'error'); closeModal(); return; }
         const fd = new FormData(e.target);
-        const project = createProject({
+        await createProject({
           title: fd.get('title').trim(),
           description: fd.get('description').trim(),
           techStack: fd.get('techStack').trim(),
@@ -684,10 +697,9 @@ function openCreateMyProjectModal(group) {
           deadline: fd.get('deadline') ? new Date(fd.get('deadline')).toISOString() : '',
           status: 'Active'
         });
-        logActivity(`${ME.displayId} created project ${project.displayId} for group ${group.displayId}`);
         closeModal();
         showToast('Project created', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
@@ -730,10 +742,10 @@ function openEditMyProjectModal(project) {
   `, {
     onMount: () => {
       document.getElementById('cancelEditMyProject').addEventListener('click', closeModal);
-      document.getElementById('editMyProjectForm').addEventListener('submit', (e) => {
+      document.getElementById('editMyProjectForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        editProject(project.id, {
+        await editProject(project.id, {
           title: fd.get('title').trim(),
           description: fd.get('description').trim(),
           techStack: fd.get('techStack').trim(),
@@ -741,21 +753,20 @@ function openEditMyProjectModal(project) {
           repoName: fd.get('repoName').trim(),
           branch: fd.get('branch').trim() || 'main'
         });
-        logActivity(`${ME.displayId} updated project ${project.displayId} details`);
         closeModal();
         showToast('Project details updated', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Progress ================= */
-function renderProgressPanel() {
+async function renderProgressPanel() {
   const host = document.getElementById('progressPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
-  const project = group ? getProject(group.project) : null;
+  const group = await getGroup(ME.group);
+  const project = group ? await getProject(group.project) : null;
   if (!project) { host.innerHTML = emptyState('No project assigned yet.'); return; }
   host.innerHTML = `
     <div class="section__head"><h3>${escapeHtml(project.title)}</h3><span style="font-size:22px; font-weight:800;">${project.progress}%</span></div>
@@ -767,24 +778,24 @@ function renderProgressPanel() {
     <div id="submissionBlock" style="margin-top:22px; padding-top:20px; border-top:1px solid var(--line-soft);"></div>`;
 
   host.querySelectorAll('#progressChecklist [data-stage]').forEach((row) => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', async () => {
       const stageName = row.dataset.stage;
       const current = project.stages[stageName];
       const next = current === 'Pending' ? 'In Progress' : current === 'In Progress' ? 'Completed' : 'Pending';
-      setProjectStage(project.id, stageName, next);
+      await setProjectStage(project.id, stageName, next);
       showToast(`${stageName} marked ${next}`, 'success');
-      renderAll();
+      await renderAll();
     });
   });
 
   renderSubmissionBlock(project);
 }
 /* ================= Submission tab (dedicated page) ================= */
-function renderSubmissionTab() {
+async function renderSubmissionTab() {
   const host = document.getElementById('submissionTabPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
-  const project = group ? getProject(group.project) : null;
+  const group = await getGroup(ME.group);
+  const project = group ? await getProject(group.project) : null;
 
   if (!project) {
     host.innerHTML = emptyState('You need a project before you can submit anything. Check My Project.');
@@ -849,28 +860,27 @@ function openSubmitProjectModal(project) {
   `, {
     onMount: () => {
       document.getElementById('cancelSubmitProject').addEventListener('click', closeModal);
-      document.getElementById('submitProjectForm').addEventListener('submit', (e) => {
+      document.getElementById('submitProjectForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        submitProjectWork(project.id, {
+        await submitProjectWork(project.id, {
           link: fd.get('link').trim(),
-          note: fd.get('note').trim(),
-          submittedBy: ME.displayId
+          note: fd.get('note').trim()
         });
         closeModal();
         showToast('Submission sent to faculty for review', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= GitHub ================= */
-function renderGithub() {
+async function renderGithub() {
   const host = document.getElementById('githubPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
-  const project = group ? getProject(group.project) : null;
+  const group = await getGroup(ME.group);
+  const project = group ? await getProject(group.project) : null;
   if (!project) { host.innerHTML = emptyState('No repository linked yet.'); return; }
   host.innerHTML = `
     <div class="card">
@@ -913,28 +923,27 @@ function openEditGithubModal(project) {
   `, {
     onMount: () => {
       document.getElementById('cancelEditGithub').addEventListener('click', closeModal);
-      document.getElementById('editGithubForm').addEventListener('submit', (e) => {
+      document.getElementById('editGithubForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        editProject(project.id, {
+        await editProject(project.id, {
           repoName: fd.get('repoName').trim(),
           githubUrl: fd.get('githubUrl').trim(),
           branch: fd.get('branch').trim() || 'main'
         });
-        logActivity(`${ME.displayId} updated GitHub link for project ${project.displayId}`);
         closeModal();
         showToast('GitHub repository updated', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Marks page (Evaluation Summary + Donut + Trend + Details) ================= */
-function renderMarksPage() {
+async function renderMarksPage() {
   const host = document.getElementById('marksMainGrid');
   if (!host) return;
-  const m = marksForStudent(ME.displayId);
+  const m = await marksForStudent(ME.displayId);
   if (!m) { host.innerHTML = `<div class="section">${emptyState('Marks have not been entered yet.')}</div>`; return; }
   const t = deriveMarkTotals(m);
 
@@ -1001,11 +1010,11 @@ function renderMarksPage() {
 }
 
 /* ================= Presentation ================= */
-function renderPresentation() {
+async function renderPresentation() {
   const host = document.getElementById('presentationPanel');
   if (!host) return;
-  const group = getGroup(ME.group);
-  const list = group ? presentationsForGroup(group.displayId) : [];
+  const group = await getGroup(ME.group);
+  const list = group ? await presentationsForGroup(group.displayId) : [];
   if (!list.length) { host.innerHTML = emptyState('No presentation scheduled for your group.'); return; }
   host.innerHTML = list.map((p) => `
     <div class="list-item">
@@ -1021,13 +1030,16 @@ function renderPresentation() {
 }
 
 /* ================= Peer connections ================= */
-function renderPeers() {
+async function renderPeers() {
   const host = document.getElementById('peersPanel');
   if (!host) return;
-  const students = getData(CDAD_KEYS.STUDENTS).filter((s) => s.displayId !== ME.displayId);
-  const received = peerRequestsReceivedBy(ME.displayId).filter((r) => r.status === 'Pending');
-  const sent = peerRequestsSentBy(ME.displayId);
-  const connections = connectionsOf(ME.displayId);
+  const allStudents = await getData(CDAD_KEYS.STUDENTS);
+  const students = allStudents.filter((s) => s.displayId !== ME.displayId);
+  const receivedRaw = await peerRequestsReceivedBy(ME.displayId);
+  const received = receivedRaw.filter((r) => r.status === 'Pending');
+  const sent = await peerRequestsSentBy(ME.displayId);
+  const connections = await connectionsOf(ME.displayId);
+  const myGroup = await getGroup(ME.group);
 
   host.innerHTML = `
     <div class="tabbar">
@@ -1038,17 +1050,17 @@ function renderPeers() {
     </div>
     <div id="peerTab-directory" class="peer-tab-panel">
       <div class="card-grid">
-        ${students.map((s) => peerDirectoryCard(s, connections, sent)).join('') || emptyState('No other students found.')}
+        ${students.map((s) => peerDirectoryCard(s, connections, sent, myGroup)).join('') || emptyState('No other students found.')}
       </div>
     </div>
     <div id="peerTab-received" class="peer-tab-panel" style="display:none;">
-      ${received.length ? received.map(receivedPeerRow).join('') : emptyState('No pending requests received.')}
+      ${received.length ? received.map((r) => receivedPeerRow(r, allStudents)).join('') : emptyState('No pending requests received.')}
     </div>
     <div id="peerTab-sent" class="peer-tab-panel" style="display:none;">
       ${sent.length ? sent.map(sentPeerRow).join('') : emptyState("You haven't sent any requests yet.")}
     </div>
     <div id="peerTab-connections" class="peer-tab-panel" style="display:none;">
-      ${connections.length ? connections.map((c) => connectionRow(c)).join('') : emptyState('No connections yet. Send a request from the Directory tab.')}
+      ${connections.length ? connections.map((c) => connectionRow(c, allStudents)).join('') : emptyState('No connections yet. Send a request from the Directory tab.')}
     </div>`;
 
   host.querySelectorAll('[data-peer-tab]').forEach((btn) => {
@@ -1059,22 +1071,20 @@ function renderPeers() {
     });
   });
   host.querySelectorAll('[data-send-peer]').forEach((btn) => btn.addEventListener('click', () => openSendPeerRequestModal(btn.dataset.sendPeer)));
-  host.querySelectorAll('[data-accept-peer]').forEach((btn) => btn.addEventListener('click', () => { respondToPeerRequest(btn.dataset.acceptPeer, true); showToast('Request accepted', 'success'); renderAll(); }));
-  host.querySelectorAll('[data-reject-peer]').forEach((btn) => btn.addEventListener('click', () => { respondToPeerRequest(btn.dataset.rejectPeer, false); showToast('Request rejected', 'info'); renderAll(); }));
+  host.querySelectorAll('[data-accept-peer]').forEach((btn) => btn.addEventListener('click', async () => { await respondToPeerRequest(btn.dataset.acceptPeer, true); showToast('Request accepted', 'success'); await renderAll(); }));
+  host.querySelectorAll('[data-reject-peer]').forEach((btn) => btn.addEventListener('click', async () => { await respondToPeerRequest(btn.dataset.rejectPeer, false); showToast('Request rejected', 'info'); await renderAll(); }));
   host.querySelectorAll('[data-remove-connection]').forEach((btn) => btn.addEventListener('click', () => {
-    confirmDelete(`Remove connection with ${btn.dataset.removeConnection}?`, () => { removeConnection(ME.displayId, btn.dataset.removeConnection); showToast('Connection removed', 'info'); renderAll(); });
+    confirmDelete(`Remove connection with ${btn.dataset.removeConnection}?`, async () => { await removeConnection(ME.displayId, btn.dataset.removeConnection); showToast('Connection removed', 'info'); await renderAll(); });
   }));
-  host.querySelectorAll('[data-invite-group]').forEach((btn) => btn.addEventListener('click', () => {
-    const myGroup = getGroup(ME.group);
+  host.querySelectorAll('[data-invite-group]').forEach((btn) => btn.addEventListener('click', async () => {
     if (!myGroup) { showToast('You are not in a group.', 'error'); return; }
-    addMember(myGroup.id, btn.dataset.inviteGroup);
-    logActivity(`${ME.displayId} invited ${btn.dataset.inviteGroup} to group ${myGroup.displayId}`);
+    await addMember(myGroup.id, btn.dataset.inviteGroup);
     showToast('Student added to your group', 'success');
-    renderAll();
+    await renderAll();
   }));
 }
 
-function peerDirectoryCard(s, connections, sent) {
+function peerDirectoryCard(s, connections, sent, myGroup) {
   const isConnected = connections.includes(s.displayId);
   const pendingSent = sent.find((r) => r.to === s.displayId && r.status === 'Pending');
   let actionHtml;
@@ -1082,7 +1092,6 @@ function peerDirectoryCard(s, connections, sent) {
   else if (pendingSent) actionHtml = `<span class="badge badge--warn">Request Pending</span>`;
   else actionHtml = `<button class="btn btn--ghost btn--sm" data-send-peer="${s.displayId}">Send Request</button>`;
 
-  const myGroup = getGroup(ME.group);
   const iAmLeader = myGroup && myGroup.teamLeader === ME.displayId;
   const canInvite = iAmLeader && isConnected && !s.group;
   const inviteHtml = canInvite ? `<button class="btn btn--primary btn--sm" data-invite-group="${s.displayId}">Invite to Group</button>` : '';
@@ -1100,8 +1109,8 @@ function peerDirectoryCard(s, connections, sent) {
     </div>`;
 }
 
-function receivedPeerRow(r) {
-  const from = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId === r.from);
+function receivedPeerRow(r, students) {
+  const from = students.find((s) => s.displayId === r.from);
   return `
     <div class="list-item unread">
       <div class="list-item__top">
@@ -1125,8 +1134,8 @@ function sentPeerRow(r) {
     </div>`;
 }
 
-function connectionRow(displayId) {
-  const s = getData(CDAD_KEYS.STUDENTS).find((x) => x.displayId === displayId);
+function connectionRow(displayId, students) {
+  const s = students.find((x) => x.displayId === displayId);
   return `
     <div class="list-item">
       <div class="list-item__top">
@@ -1139,8 +1148,9 @@ function connectionRow(displayId) {
     </div>`;
 }
 
-function openSendPeerRequestModal(toDisplayId) {
-  const to = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId === toDisplayId);
+async function openSendPeerRequestModal(toDisplayId) {
+  const students = await getData(CDAD_KEYS.STUDENTS);
+  const to = students.find((s) => s.displayId === toDisplayId);
   openModal(`Send Request to ${to ? to.name : toDisplayId}`, `
     <form id="peerRequestForm">
       <div class="field full"><label>Message (optional)</label><textarea name="message" placeholder="Say why you'd like to connect..."></textarea></div>
@@ -1152,12 +1162,12 @@ function openSendPeerRequestModal(toDisplayId) {
   `, {
     onMount: () => {
       document.getElementById('cancelPeerReq').addEventListener('click', closeModal);
-      document.getElementById('peerRequestForm').addEventListener('submit', (e) => {
+      document.getElementById('peerRequestForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        const result = sendPeerRequest(ME.displayId, toDisplayId, fd.get('message').trim());
+        const result = await sendPeerRequest(ME.displayId, toDisplayId, fd.get('message').trim());
         closeModal();
-        if (result.ok) { showToast('Request sent', 'success'); renderAll(); }
+        if (result.ok) { showToast('Request sent', 'success'); await renderAll(); }
         else showToast(result.error, 'error');
       });
     }
@@ -1165,10 +1175,11 @@ function openSendPeerRequestModal(toDisplayId) {
 }
 
 /* ================= Academic requests (to faculty) ================= */
-function renderRequests() {
+async function renderRequests() {
   const host = document.getElementById('requestsPanel');
   if (!host) return;
-  const mine = requestsForStudent(ME.displayId).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const mineRaw = await requestsForStudent(ME.displayId);
+  const mine = mineRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
   host.innerHTML = `
     <div class="section__head">
       <h3>My Requests to Faculty</h3>
@@ -1191,8 +1202,8 @@ function academicRequestRow(r) {
     </div>`;
 }
 
-function openNewRequestModal() {
-  const groups = allGroups();
+async function openNewRequestModal() {
+  const groups = await allGroups();
   openModal('New Request', `
     <form id="newRequestForm">
       <div class="form-grid">
@@ -1217,26 +1228,27 @@ function openNewRequestModal() {
   `, {
     onMount: () => {
       document.getElementById('cancelNewRequest').addEventListener('click', closeModal);
-      document.getElementById('newRequestForm').addEventListener('submit', (e) => {
+      document.getElementById('newRequestForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        createRequest({ student: ME.displayId, type: fd.get('type'), group: fd.get('group'), message: fd.get('message').trim() });
+        await createRequest({ type: fd.get('type'), group: fd.get('group'), message: fd.get('message').trim() });
         closeModal();
         showToast('Request submitted', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Notifications ================= */
-function renderNotifications() {
+async function renderNotifications() {
   const host = document.getElementById('notificationsPanel');
   if (!host) return;
-  const list = notificationsFor({ type: 'student', displayId: ME.displayId }).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const raw = await notificationsFor({ type: 'student', displayId: ME.displayId });
+  const list = raw.sort((a, b) => new Date(b.date) - new Date(a.date));
   host.innerHTML = list.length ? list.map(notifRow).join('') : emptyState('No notifications.');
-  host.querySelectorAll('[data-mark-read]').forEach((b) => b.addEventListener('click', () => { markNotificationRead(b.dataset.markRead, true); renderAll(); }));
-  host.querySelectorAll('[data-del-notif]').forEach((b) => b.addEventListener('click', () => { deleteNotification(b.dataset.delNotif); showToast('Notification removed', 'info'); renderAll(); }));
+  host.querySelectorAll('[data-mark-read]').forEach((b) => b.addEventListener('click', async () => { await markNotificationRead(b.dataset.markRead, true); await renderAll(); }));
+  host.querySelectorAll('[data-del-notif]').forEach((b) => b.addEventListener('click', async () => { await deleteNotification(b.dataset.delNotif); showToast('Notification removed', 'info'); await renderAll(); }));
 }
 
 function notifRow(n) {
@@ -1255,10 +1267,10 @@ function notifRow(n) {
 }
 
 /* ================= Announcements ================= */
-function renderAnnouncements() {
+async function renderAnnouncements() {
   const host = document.getElementById('announcementsPanel');
   if (!host) return;
-  const list = allAnnouncements();
+  const list = await allAnnouncements();
   host.innerHTML = list.length ? list.map(announcementRow).join('') : emptyState('No announcements yet.');
 }
 

@@ -2,14 +2,17 @@
    CDAD :: marks.js
    Faculty-editable marks per student. Total/percentage/grade
    are always derived — never stored as independent fields.
+   Thin wrappers over /api/marks now; activity logging happens
+   server-side.
    ============================================================ */
 
-function allMarks() {
+async function allMarks() {
   return getData(CDAD_KEYS.MARKS);
 }
 
-function marksForStudent(studentDisplayId) {
-  return allMarks().find((m) => m.studentId === studentDisplayId) || null;
+async function marksForStudent(studentDisplayId) {
+  const marks = await allMarks();
+  return marks.find((m) => m.studentId === studentDisplayId) || null;
 }
 
 function deriveMarkTotals(m) {
@@ -19,38 +22,19 @@ function deriveMarkTotals(m) {
   return { total, max, percentage: pct, grade: gradeFromPercentage(pct) };
 }
 
-function upsertMarks(studentDisplayId, fields) {
-  const existing = marksForStudent(studentDisplayId);
-  if (existing) {
-    const updated = updateData(CDAD_KEYS.MARKS, existing.id, fields);
-    logActivity(`Marks updated for ${studentDisplayId}`);
-    return updated;
-  }
-  const record = Object.assign({
-    id: generateId('MRK'),
-    studentId: studentDisplayId,
-    internal: 0, internalMax: 20,
-    project: 0, projectMax: 40,
-    presentation: 0, presentationMax: 20,
-    viva: 0, vivaMax: 10
-  }, fields);
-  addData(CDAD_KEYS.MARKS, record);
-  logActivity(`Marks added for ${studentDisplayId}`);
-  return record;
+async function upsertMarks(studentDisplayId, fields) {
+  const res = await fetch(`/api/marks/student/${encodeURIComponent(studentDisplayId)}`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields)
+  });
+  return res.ok ? res.json() : null;
 }
 
-function deleteMarks(id) {
-  const m = findData(CDAD_KEYS.MARKS, id);
-  if (!m) return false;
-  deleteData(CDAD_KEYS.MARKS, id);
-  logActivity(`Marks deleted for ${m.studentId}`);
-  return true;
+async function deleteMarks(id) {
+  return deleteData(CDAD_KEYS.MARKS, id);
 }
 
-function resetMarks(id) {
-  const m = findData(CDAD_KEYS.MARKS, id);
-  if (!m) return false;
-  updateData(CDAD_KEYS.MARKS, id, { internal: 0, project: 0, presentation: 0, viva: 0 });
-  logActivity(`Marks reset for ${m.studentId}`);
-  return true;
+async function resetMarks(id) {
+  const res = await fetch(`/api/marks/${id}/reset`, { method: 'POST', credentials: 'include' });
+  return res.ok;
 }

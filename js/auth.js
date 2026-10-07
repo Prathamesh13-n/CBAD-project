@@ -1,7 +1,8 @@
 /* ============================================================
    CDAD :: auth.js
-   Minimal frontend-only authentication against the seeded
-   students/faculty tables. Session lives in cdad_current_user.
+   Thin wrapper over /api/auth/* — the server now owns credential
+   checking (bcrypt) and session state (an HttpOnly cookie) instead
+   of a plaintext LocalStorage comparison.
    ============================================================ */
 
 /**
@@ -9,80 +10,45 @@
  * (Student ID like ADT24SOCB0001, or Faculty ID like FAC001) —
  * never by email. Returns { ok, error, user } — never throws.
  */
-function attemptLogin(role, studentOrFacultyId, password) {
-  const id = (studentOrFacultyId || '').trim().toLowerCase();
-
-  if (role === 'faculty') {
-    const fac = getData(CDAD_KEYS.FACULTY).find((f) => f.displayId.toLowerCase() === id);
-    if (!fac || fac.password !== password) return { ok: false, error: 'Invalid Faculty ID or password.' };
-    const user = { type: 'faculty', id: fac.id, displayId: fac.displayId };
-    saveData(CDAD_KEYS.CURRENT_USER, user);
-    logActivity(`Faculty ${fac.displayId} logged in`);
-    return { ok: true, user };
-  }
-
-  const stu = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId.toLowerCase() === id);
-  if (!stu || stu.password !== password) return { ok: false, error: 'Invalid Student ID or password.' };
-  if (stu.status !== 'Active') return { ok: false, error: 'This student account is not active. Contact faculty.' };
-  const user = { type: 'student', id: stu.id, displayId: stu.displayId };
-  saveData(CDAD_KEYS.CURRENT_USER, user);
-  logActivity(`Student ${stu.displayId} logged in`);
-  return { ok: true, user };
+async function attemptLogin(role, studentOrFacultyId, password) {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, id: studentOrFacultyId, password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || 'Login failed.' };
+  return { ok: true, user: data.user };
 }
 
-function getCurrentUser() {
-  const u = getData(CDAD_KEYS.CURRENT_USER);
-  if (!u || Array.isArray(u) || !u.id) return null;
-  return u;
+/** The full current-user record (student or faculty shape) plus a `type` field, or null. */
+async function getCurrentUser() {
+  const res = await fetch('/api/auth/me', { credentials: 'include' });
+  if (!res.ok) return null;
+  return res.json();
 }
 
-function logout() {
-  const u = getCurrentUser();
-  if (u) logActivity(`${u.type === 'faculty' ? 'Faculty' : 'Student'} ${u.displayId} logged out`);
-  localStorage.removeItem(CDAD_KEYS.CURRENT_USER);
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
   window.location.href = 'index.html';
 }
 
-/** Call at the top of student.html / faculty.html to enforce the correct role. */
-function requireRole(role) {
-  const u = getCurrentUser();
-  if (!u || u.type !== role) {
+/** Call at the top of a page to enforce the correct role — or, with no argument, just require any logged-in session. */
+async function requireRole(role) {
+  const u = await getCurrentUser();
+  if (!u || (role && u.type !== role)) {
     window.location.href = 'index.html';
     return null;
   }
   return u;
 }
 
-function currentStudentRecord() {
-  const u = getCurrentUser();
-  if (!u || u.type !== 'student') return null;
-  return findData(CDAD_KEYS.STUDENTS, u.id);
+async function currentStudentRecord() {
+  const u = await getCurrentUser();
+  return u && u.type === 'student' ? u : null;
 }
 
-function currentFacultyRecord() {
-  const u = getCurrentUser();
-  if (!u || u.type !== 'faculty') return null;
-  return findData(CDAD_KEYS.FACULTY, u.id);
-}
-
-function attemptLogin(role, studentOrFacultyId, password) {
-  const id = (studentOrFacultyId || '').trim().toLowerCase();
-  const pass = (password || '').trim();
-
-  if (role === 'faculty') {
-    const fac = getData(CDAD_KEYS.FACULTY).find((f) => f.displayId.toLowerCase() === id);
-    if (!fac || fac.password !== pass) return { ok: false, error: 'Invalid Faculty ID or password.' };
-    const user = { type: 'faculty', id: fac.id, displayId: fac.displayId };
-    saveData(CDAD_KEYS.CURRENT_USER, user);
-    logActivity(`Faculty ${fac.displayId} logged in`);
-    return { ok: true, user };
-  }
-
-  const stu = getData(CDAD_KEYS.STUDENTS).find((s) => s.displayId.toLowerCase() === id);
-  if (!stu || stu.password !== pass) return { ok: false, error: 'Invalid Student ID or password.' };
-  if (stu.status !== 'Active') return { ok: false, error: 'This student account is not active. Contact faculty.' };
-  const user = { type: 'student', id: stu.id, displayId: stu.displayId };
-  saveData(CDAD_KEYS.CURRENT_USER, user);
-  logActivity(`Student ${stu.displayId} logged in`);
-  return { ok: true, user };
+async function currentFacultyRecord() {
+  const u = await getCurrentUser();
+  return u && u.type === 'faculty' ? u : null;
 }

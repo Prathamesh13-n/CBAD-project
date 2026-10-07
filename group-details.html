@@ -25,7 +25,7 @@
 
   <script src="js/storage.js"></script>
   <script src="js/common.js"></script>
-  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/groups.js"></script>
   <script src="js/projects.js"></script>
   <script src="js/presentations.js"></script>
@@ -34,10 +34,13 @@
       return `<div class="empty-state"><div class="empty-state__icon">—</div><p>${escapeHtml(msg)}</p></div>`;
     }
 
-    function render() {
+    async function render() {
+      const user = await requireRole();
+      if (!user) return;
+
       const params = new URLSearchParams(window.location.search);
       const id = params.get('id');
-      const group = id ? getGroup(id) : null;
+      const group = id ? await getGroup(id) : null;
       const host = document.getElementById('groupDetailsContent');
       const titleEl = document.getElementById('groupTitle');
 
@@ -48,10 +51,10 @@
       }
 
       titleEl.textContent = `${group.name} (${group.displayId})`;
-      const project = getGroup(group.displayId).project ? getProject(group.project) : null;
-      const students = getData(CDAD_KEYS.STUDENTS);
+      const project = group.project ? await getProject(group.project) : null;
+      const students = await getData(CDAD_KEYS.STUDENTS);
       const members = (group.members || []).map((m) => students.find((s) => s.displayId === m)).filter(Boolean);
-      const presentations = presentationsForGroup(group.displayId);
+      const presentations = await presentationsForGroup(group.displayId);
 
       host.innerHTML = `
         <div class="section">

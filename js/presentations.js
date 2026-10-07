@@ -1,77 +1,44 @@
 /* ============================================================
    CDAD :: presentations.js
-   CRUD for group presentations / defenses.
+   Thin wrappers over /api/presentations. Notification creation
+   and activity logging happen server-side now.
    ============================================================ */
 
-function allPresentations() {
+async function allPresentations() {
   return getData(CDAD_KEYS.PRESENTATIONS);
 }
 
-function presentationsForGroup(groupDisplayId) {
-  return allPresentations().filter((p) => p.group === groupDisplayId);
+async function presentationsForGroup(groupDisplayId) {
+  const all = await allPresentations();
+  return all.filter((p) => p.group === groupDisplayId);
 }
 
-function createPresentation(data) {
-  const displayId = nextSequentialId(CDAD_KEYS.PRESENTATIONS, 'PRE', 3);
-  const pres = {
-    id: generateId('PRE'),
-    displayId,
-    group: data.group,
-    project: data.project || (projectForGroup(data.group)?.displayId || ''),
-    date: data.date,
-    time: data.time,
-    venue: data.venue,
-    faculty: data.faculty || '',
-    status: data.status || 'Scheduled',
-    notes: data.notes || ''
-  };
-  addData(CDAD_KEYS.PRESENTATIONS, pres);
-  createNotification({
-    title: 'Presentation Scheduled',
-    message: `A presentation for ${pres.group} has been scheduled on ${formatDate(pres.date)} at ${pres.time}.`,
-    type: 'presentation',
-    recipient: pres.group
+async function createPresentation(data) {
+  return addData(CDAD_KEYS.PRESENTATIONS, data);
+}
+
+async function editPresentation(id, updates) {
+  return updateData(CDAD_KEYS.PRESENTATIONS, id, updates);
+}
+
+async function reschedulePresentation(id, date, time) {
+  const res = await fetch(`/api/presentations/${id}/reschedule`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, time })
   });
-  logActivity(`Presentation ${displayId} scheduled for group ${pres.group}`);
-  return pres;
+  return res.ok ? res.json() : null;
 }
 
-function editPresentation(id, updates) {
-  const updated = updateData(CDAD_KEYS.PRESENTATIONS, id, updates);
-  if (updated) logActivity(`Presentation ${updated.displayId} updated`);
-  return updated;
+async function cancelPresentation(id) {
+  const res = await fetch(`/api/presentations/${id}/cancel`, { method: 'PUT', credentials: 'include' });
+  return res.ok ? res.json() : null;
 }
 
-function reschedulePresentation(id, date, time) {
-  const updated = updateData(CDAD_KEYS.PRESENTATIONS, id, { date, time, status: 'Rescheduled' });
-  if (updated) {
-    createNotification({
-      title: 'Presentation Rescheduled',
-      message: `Presentation for ${updated.group} moved to ${formatDate(date)} at ${time}.`,
-      type: 'presentation',
-      recipient: updated.group
-    });
-    logActivity(`Presentation ${updated.displayId} rescheduled`);
-  }
-  return updated;
+async function completePresentation(id) {
+  const res = await fetch(`/api/presentations/${id}/complete`, { method: 'PUT', credentials: 'include' });
+  return res.ok ? res.json() : null;
 }
 
-function cancelPresentation(id) {
-  const updated = updateData(CDAD_KEYS.PRESENTATIONS, id, { status: 'Cancelled' });
-  if (updated) logActivity(`Presentation ${updated.displayId} cancelled`);
-  return updated;
-}
-
-function completePresentation(id) {
-  const updated = updateData(CDAD_KEYS.PRESENTATIONS, id, { status: 'Completed' });
-  if (updated) logActivity(`Presentation ${updated.displayId} marked completed`);
-  return updated;
-}
-
-function deletePresentation(id) {
-  const p = findData(CDAD_KEYS.PRESENTATIONS, id);
-  if (!p) return false;
-  deleteData(CDAD_KEYS.PRESENTATIONS, id);
-  logActivity(`Presentation ${p.displayId} deleted`);
-  return true;
+async function deletePresentation(id) {
+  return deleteData(CDAD_KEYS.PRESENTATIONS, id);
 }

@@ -5,42 +5,30 @@
    avatar initials, formatting.
    ============================================================ */
 
-/* ---------- Activity log ---------- */
-function logActivity(text) {
-  addData(CDAD_KEYS.ACTIVITY, {
-    id: generateId('ACT'),
-    text,
-    date: new Date().toISOString()
+/* ---------- Activity log ----------
+   Every mutating API route logs itself server-side now (see server/db.js's
+   logActivity + each routes/*.js file) — the frontend no longer writes log
+   entries directly, it only ever reads/clears the log faculty.js shows. */
+async function clearActivityLog() {
+  await fetch('/api/activity', { method: 'DELETE', credentials: 'include' });
+}
+
+/* ---------- Notifications ----------
+   recipient: 'all-students' | 'all-faculty' | a student displayId | a faculty displayId | a group displayId.
+   Only faculty.js's manual "compose notification" form still calls this directly —
+   every other notification (presentation scheduled, request responded to, etc.)
+   is now created server-side by the endpoint that triggers it. */
+async function createNotification({ title, message, type, recipient }) {
+  await fetch('/api/notifications', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, message, type: type || 'info', recipient })
   });
 }
 
-function clearActivityLog() {
-  saveData(CDAD_KEYS.ACTIVITY, []);
-}
-
-/* ---------- Notifications ---------- */
-/**
- * recipient: 'all-students' | 'all-faculty' | a student displayId | a faculty displayId
- */
-function createNotification({ title, message, type, recipient }) {
-  return addData(CDAD_KEYS.NOTIFICATIONS, {
-    id: generateId('NOTIF'),
-    title,
-    message,
-    type: type || 'info',
-    recipient,
-    date: new Date().toISOString(),
-    read: false
-  });
-}
-
-function notificationsFor(user) {
-  const all = getData(CDAD_KEYS.NOTIFICATIONS);
-  if (!user) return [];
-  if (user.type === 'student') {
-    return all.filter((n) => n.recipient === 'all-students' || n.recipient === user.displayId);
-  }
-  return all.filter((n) => n.recipient === 'all-faculty' || n.recipient === user.displayId);
+/** GET /api/notifications is already scoped server-side to whoever's logged in. */
+async function notificationsFor(user) {
+  return getData(CDAD_KEYS.NOTIFICATIONS);
 }
 
 /* ---------- Toasts ---------- */

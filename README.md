@@ -1,46 +1,69 @@
 # CDAD — College Digital Academic Dashboard
 
-A fully editable, frontend-only academic dashboard for managing students,
-groups, projects, marks, presentations, and submissions. No backend, no
-database — everything is read from and written to the browser's
-**LocalStorage**. An edit made on the Faculty Dashboard is immediately
-visible on the Student Dashboard, and vice versa where students are allowed
-to edit their own data.
+A fully editable academic dashboard for managing students, groups, projects,
+marks, presentations, and submissions. A Node/Express REST API backed by
+SQLite is the single source of truth — every student and faculty session
+reads and writes the same server-side data, so an edit made on the Faculty
+Dashboard is immediately visible on the Student Dashboard (and vice versa
+where students are allowed to edit their own data), across devices, not just
+across browser tabs. Sessions are server-side, authenticated via an
+HttpOnly cookie, and passwords are bcrypt-hashed — never stored or compared
+in plaintext.
 
-> **Important limitation:** because everything lives in LocalStorage, data is
-> **per-browser, per-device only** — it is not synced to a server. Two
-> students logging in from two different phones/laptops will each see an
-> empty, independent copy of the app. This build is a fully working
-> prototype/demo; publishing it for a real class across many devices would
-> require replacing the LocalStorage layer (`js/storage.js`) with real API
-> calls to a backend + database. Everything else (UI, workflows, validation)
-> would carry over unchanged.
+> **Note on "live" updates:** the frontend polls the server every 15 seconds
+> (and immediately on tab focus) rather than pushing updates over a
+> WebSocket, so a change made by someone else may take a few seconds to
+> appear — this was a deliberate simplicity tradeoff for a project at this
+> scale.
 
 ## Tech Stack
 
-- HTML5, CSS3, Vanilla JavaScript (no frameworks, no build step)
-- Browser `LocalStorage` as the only data layer
-- Docker + Nginx (Alpine) for serving the static files
+- HTML5, CSS3, Vanilla JavaScript on the frontend (no frameworks, no build step)
+- Node.js + Express REST API (`server/`)
+- SQLite (via Node's built-in `node:sqlite`) as the only data store — requires Node 22+ (the Dockerfile uses `node:22-alpine`)
+- `bcryptjs` for password hashing, HttpOnly session cookies for auth
+- Docker (single Node container, no separate reverse proxy needed)
 
 ## Quick Start (Docker)
 
 ```bash
 docker build -t cdad .
-docker run -d -p 8080:80 --name cdad-container cdad
+docker volume create cdad-data
+docker run -d -p 3000:3000 -v cdad-data:/app/server/data --name cdad-container cdad
 ```
 
-Open **http://localhost:8080**
+Open **http://localhost:3000**
 
-To stop/remove:
+The `-v cdad-data:/app/server/data` volume is what makes the SQLite database
+survive beyond the container itself — without it, removing the container
+(`docker rm`, not just `docker stop`) wipes all data and the next run starts
+from a fresh seed. With the volume, `docker rm` + `docker run` again reuses
+the same data (confirmed: the server logs "Already seeded" instead of
+reseeding).
+
+To stop/remove (data is preserved in the volume either way):
 
 ```bash
 docker stop cdad-container && docker rm cdad-container
 ```
 
+To wipe the demo data and start over, also remove the volume:
+
+```bash
+docker volume rm cdad-data
+```
+
 ## Quick Start (no Docker)
 
-Open `index.html` directly in a browser, or serve the folder with any static
-file server, e.g. `npx serve .` or Python's `python3 -m http.server`.
+```bash
+cd server
+npm install
+npm start
+```
+
+Open **http://localhost:3000** (or set `PORT=...` before `npm start` to use a
+different port). The server seeds demo data into `server/data/cdad.db`
+automatically on first run.
 
 ## Login
 
@@ -155,37 +178,36 @@ The app walks a brand-new student through setup automatically:
 ### Dashboards
 - Every number on every dashboard card and chart — student counts, group
   progress, project status breakdown, marks, everything — is computed live
-  from LocalStorage. Nothing is hardcoded.
-- Live cross-tab sync: if LocalStorage changes in another tab (e.g. a
-  classmate accepts your connection request), this tab picks it up and
-  refreshes automatically. If a session is invalidated elsewhere (e.g. a
-  data reseed), the tab redirects to login instead of breaking.
+  from the server, via real SQL joins (e.g. a group's progress is read
+  straight off its linked project — there's no stored mirror to desync).
+  Nothing is hardcoded.
+- Live sync: the page polls the server every 15 seconds and on tab focus, so
+  changes made elsewhere (e.g. a classmate accepting your connection
+  request) show up without a manual reload. If a session is invalidated
+  elsewhere (e.g. a reseed or logout), the next poll redirects to login
+  instead of breaking.
 
 ### Activity log
 - Every create/update/delete action across the whole app is logged with a
   timestamp. Faculty can view or clear the full history.
 
-## LocalStorage Keys
+## Database
 
-cdad_students
-cdad_groups
-cdad_projects
-cdad_marks
-cdad_presentations
-cdad_requests
-cdad_student_requests
-cdad_group_join_requests
-cdad_notifications
-cdad_announcements
-cdad_faculty
-cdad_activity
-cdad_current_user
-cdad_seeded
+SQLite tables (`server/db.js`): `faculty`, `students`, `student_groups`,
+`projects`, `submissions`, `marks`, `presentations`, `requests`,
+`group_join_requests`, `student_requests`, `student_connections`,
+`notifications`, `announcements`, `activity`, `seed_meta`. Real foreign keys
+replace what used to be hand-synced LocalStorage arrays — e.g. group
+membership is `students.group_id`, not a `members[]` array kept in sync by
+hand; group progress is read live off the linked project, never stored
+independently.
 
-
-All access goes through the shared helpers in `js/storage.js`
-(`getData`, `saveData`, `addData`, `updateData`, `deleteData`, `findData`) —
-no other file talks to `localStorage` directly.
+The REST API (`server/routes/*.js`) reconstructs the same JSON shapes the
+frontend has always used (`group.members`, `project.progress`, etc.) from
+these normalized tables via joins, so `js/storage.js`'s six helpers
+(`getData`, `saveData`, `addData`, `updateData`, `deleteData`, `findData`)
+still look the same to every other frontend file — they just `fetch()` the
+API now instead of reading `localStorage`.
 
 ## File Structure
 ```
@@ -207,7 +229,6 @@ CDAD/
 ├── js/
 │   ├── storage.js
 │   ├── common.js
-│   ├── data.js
 │   ├── auth.js
 │   ├── groups.js
 │   ├── projects.js
@@ -219,17 +240,43 @@ CDAD/
 │   ├── student.js
 │   └── faculty.js
 │
-└── assets/
-    ├── images/
-    └── icons/
+├── assets/
+│   ├── images/
+│   └── icons/
+│
+└── server/
+    ├── index.js          (Express app + static file serving)
+    ├── db.js              (SQLite schema + helpers)
+    ├── seed.js            (demo data, version-gated)
+    ├── sessions.js        (cookie sessions + requireRole middleware)
+    ├── serializers.js     (DB row -> frontend JSON shape)
+    ├── notify.js           (server-side notification creation)
+    ├── groupOps.js        (shared group-membership operations)
+    ├── data/cdad.db       (SQLite file, created on first run — gitignored)
+    └── routes/
+        ├── auth.js, students.js, faculty.js, groups.js, groupJoinRequests.js,
+        └── projects.js, marks.js, presentations.js, requests.js,
+            peerRequests.js, notifications.js, announcements.js, activity.js
 ```
+
 ## Resetting the Demo Data
 
-The seed re-runs automatically whenever `SEED_VERSION` in `js/data.js` is
+The seed re-runs automatically whenever `SEED_VERSION` in `server/seed.js` is
 bumped to a new string — this is how roster changes propagate to everyone
-without needing a manual reset. To force a clean reset yourself at any time,
-open DevTools on any CDAD page and run:
+without needing a manual reset.
 
-```js
-localStorage.clear();
-location.reload()
+**Without Docker** — stop the server and delete the database file:
+
+```bash
+rm server/data/cdad.db server/data/cdad.db-shm server/data/cdad.db-wal
+npm --prefix server start
+```
+
+**With Docker** — remove the volume instead (the file lives inside it, not
+on the host):
+
+```bash
+docker rm -f cdad-container
+docker volume rm cdad-data
+docker run -d -p 3000:3000 -v cdad-data:/app/server/data --name cdad-container cdad
+```

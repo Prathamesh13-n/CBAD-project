@@ -3,168 +3,91 @@
    Two distinct request systems:
    1) Academic requests students send to FACULTY
       (Join Group / Leave Group / Change Group / Project / General)
+      -> /api/requests
    2) Peer requests students send to OTHER STUDENTS
-      ("connection" requests — send, accept, reject).
+      ("connection" requests — send, accept, reject) -> /api/peer-requests
+   Notification creation and activity logging happen server-side now.
    ============================================================ */
 
 /* ================= 1. Faculty-facing academic requests ================= */
 
-function allRequests() {
+async function allRequests() {
   return getData(CDAD_KEYS.REQUESTS);
 }
 
-function requestsForStudent(studentDisplayId) {
-  return allRequests().filter((r) => r.student === studentDisplayId);
+async function requestsForStudent(studentDisplayId) {
+  const all = await allRequests();
+  return all.filter((r) => r.student === studentDisplayId);
 }
 
-function createRequest({ student, type, group, message }) {
-  const displayId = nextSequentialId(CDAD_KEYS.REQUESTS, 'REQ', 3);
-  const req = {
-    id: generateId('REQ'),
-    displayId,
-    student,
-    type,
-    group: group || '',
-    message: message || '',
-    date: new Date().toISOString(),
-    status: 'Pending',
-    response: ''
-  };
-  addData(CDAD_KEYS.REQUESTS, req);
-  createNotification({
-    title: 'New Request Submitted',
-    message: `${student} submitted a "${type}" request.`,
-    type: 'request',
-    recipient: 'all-faculty'
+async function createRequest({ type, group, message }) {
+  return addData(CDAD_KEYS.REQUESTS, { type, group, message });
+}
+
+async function editRequest(id, updates) {
+  return updateData(CDAD_KEYS.REQUESTS, id, updates);
+}
+
+async function respondToRequest(id, status, response) {
+  const res = await fetch(`/api/requests/${id}/respond`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, response })
   });
-  logActivity(`Request ${displayId} (${type}) submitted by ${student}`);
-  return req;
+  return res.ok ? res.json() : null;
 }
 
-function editRequest(id, updates) {
-  const updated = updateData(CDAD_KEYS.REQUESTS, id, updates);
-  if (updated) logActivity(`Request ${updated.displayId} updated`);
-  return updated;
-}
-
-function respondToRequest(id, status, response) {
-  const updated = updateData(CDAD_KEYS.REQUESTS, id, { status, response: response || '' });
-  if (!updated) return null;
-  createNotification({
-    title: `Request ${status}`,
-    message: `Your "${updated.type}" request has been ${status.toLowerCase()}.${response ? ' Note: ' + response : ''}`,
-    type: 'request',
-    recipient: updated.student
-  });
-  logActivity(`Request ${updated.displayId} ${status.toLowerCase()}`);
-  return updated;
-}
-
-function deleteRequest(id) {
-  const r = findData(CDAD_KEYS.REQUESTS, id);
-  if (!r) return false;
-  deleteData(CDAD_KEYS.REQUESTS, id);
-  logActivity(`Request ${r.displayId} deleted`);
-  return true;
+async function deleteRequest(id) {
+  return deleteData(CDAD_KEYS.REQUESTS, id);
 }
 
 /* ================= 2. Student-to-student peer requests ================= */
-/* Lets one student send a connection/teamwork request to another student.
-   The receiving student can Accept or Reject it. On accept, both students'
-   `connections` arrays are updated so they show up as connected. */
 
-function allStudentRequests() {
+async function allStudentRequests() {
   return getData(CDAD_KEYS.STUDENT_REQUESTS);
 }
 
-function peerRequestsReceivedBy(studentDisplayId) {
-  return allStudentRequests().filter((r) => r.to === studentDisplayId);
+async function peerRequestsReceivedBy(studentDisplayId) {
+  const all = await allStudentRequests();
+  return all.filter((r) => r.to === studentDisplayId);
 }
 
-function peerRequestsSentBy(studentDisplayId) {
-  return allStudentRequests().filter((r) => r.from === studentDisplayId);
+async function peerRequestsSentBy(studentDisplayId) {
+  const all = await allStudentRequests();
+  return all.filter((r) => r.from === studentDisplayId);
 }
 
-function connectionsOf(studentDisplayId) {
-  const s = getData(CDAD_KEYS.STUDENTS).find((x) => x.displayId === studentDisplayId);
+async function connectionsOf(studentDisplayId) {
+  const students = await getData(CDAD_KEYS.STUDENTS);
+  const s = students.find((x) => x.displayId === studentDisplayId);
   return (s && s.connections) || [];
 }
 
-function areConnected(a, b) {
-  return connectionsOf(a).includes(b);
+async function areConnected(a, b) {
+  return (await connectionsOf(a)).includes(b);
 }
 
-function hasPendingPeerRequest(from, to) {
-  return allStudentRequests().some(
-    (r) => r.status === 'Pending' && ((r.from === from && r.to === to) || (r.from === to && r.to === from))
-  );
-}
-
-function sendPeerRequest(from, to, message) {
-  if (from === to) return { ok: false, error: "You can't send a request to yourself." };
-  if (areConnected(from, to)) return { ok: false, error: 'You are already connected with this student.' };
-  if (hasPendingPeerRequest(from, to)) return { ok: false, error: 'A pending request already exists between you two.' };
-  const req = {
-    id: generateId('SREQ'),
-    from, to,
-    message: message || '',
-    date: new Date().toISOString(),
-    status: 'Pending'
-  };
-  addData(CDAD_KEYS.STUDENT_REQUESTS, req);
-  createNotification({
-    title: 'New Connection Request',
-    message: `${from} sent you a request${message ? ': "' + message + '"' : '.'}`,
-    type: 'peer-request',
-    recipient: to
+async function sendPeerRequest(from, to, message) {
+  const res = await fetch('/api/peer-requests', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, message })
   });
-  logActivity(`${from} sent a connection request to ${to}`);
-  return { ok: true, request: req };
+  return res.json();
 }
 
-function respondToPeerRequest(id, accept) {
-  const req = findData(CDAD_KEYS.STUDENT_REQUESTS, id);
-  if (!req) return { ok: false, error: 'Request not found.' };
-  const status = accept ? 'Accepted' : 'Rejected';
-  updateData(CDAD_KEYS.STUDENT_REQUESTS, id, { status });
-
-  if (accept) {
-    const students = getData(CDAD_KEYS.STUDENTS).map((s) => {
-      if (s.displayId === req.from && !((s.connections || []).includes(req.to))) {
-        return Object.assign({}, s, { connections: [...(s.connections || []), req.to] });
-      }
-      if (s.displayId === req.to && !((s.connections || []).includes(req.from))) {
-        return Object.assign({}, s, { connections: [...(s.connections || []), req.from] });
-      }
-      return s;
-    });
-    saveData(CDAD_KEYS.STUDENTS, students);
-  }
-
-  createNotification({
-    title: `Connection Request ${status}`,
-    message: `${req.to} ${status.toLowerCase()} your connection request.`,
-    type: 'peer-request',
-    recipient: req.from
+async function respondToPeerRequest(id, accept) {
+  const res = await fetch(`/api/peer-requests/${id}/respond`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accept })
   });
-  logActivity(`Connection request from ${req.from} to ${req.to} ${status.toLowerCase()}`);
-  return { ok: true };
+  return res.json();
 }
 
-function deletePeerRequest(id) {
-  const r = findData(CDAD_KEYS.STUDENT_REQUESTS, id);
-  if (!r) return false;
-  deleteData(CDAD_KEYS.STUDENT_REQUESTS, id);
-  logActivity(`Connection request ${id} removed`);
-  return true;
+async function deletePeerRequest(id) {
+  const res = await fetch(`/api/peer-requests/${id}`, { method: 'DELETE', credentials: 'include' });
+  return res.ok;
 }
 
-function removeConnection(a, b) {
-  const students = getData(CDAD_KEYS.STUDENTS).map((s) => {
-    if (s.displayId === a) return Object.assign({}, s, { connections: (s.connections || []).filter((c) => c !== b) });
-    if (s.displayId === b) return Object.assign({}, s, { connections: (s.connections || []).filter((c) => c !== a) });
-    return s;
-  });
-  saveData(CDAD_KEYS.STUDENTS, students);
-  logActivity(`Connection between ${a} and ${b} removed`);
+async function removeConnection(a, b) {
+  const res = await fetch(`/api/peer-requests/connections/${encodeURIComponent(b)}`, { method: 'DELETE', credentials: 'include' });
+  return res.ok;
 }

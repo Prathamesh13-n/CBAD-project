@@ -5,31 +5,36 @@
 
 let FAC = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-  const user = requireRole('faculty');
+document.addEventListener('DOMContentLoaded', async () => {
+  const user = await requireRole('faculty');
   if (!user) return;
-  FAC = currentFacultyRecord();
+  FAC = await currentFacultyRecord();
   if (!FAC) { logout(); return; }
 
   wireSidebarNav();
   wireLogout();
   wireStaticButtons();
-  renderAll();
+  await renderAll();
+  startLiveSync();
 });
 
-// Live sync across tabs: a student submitting work, requesting a group,
-// etc. in another tab should show up here without a manual reload.
-// If a reseed or logout in another tab invalidated this session, redirect
-// to login instead of leaving FAC null (which crashed every click before).
-window.addEventListener('storage', () => {
-  const updated = currentFacultyRecord();
-  if (updated) {
+/* ================= Live sync (polling) =================
+   Replaces the old same-browser-only LocalStorage 'storage' event:
+   re-check the session and re-render on an interval, and immediately
+   on tab focus. If the session was invalidated elsewhere (reseed,
+   logout), redirect to login instead of leaving FAC stale. */
+function startLiveSync() {
+  const tick = async () => {
+    const updated = await currentFacultyRecord();
+    if (!updated) { logout(); return; }
     FAC = updated;
-    renderAll();
-  } else {
-    logout();
-  }
-});
+    await renderAll();
+  };
+  setInterval(tick, 15000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tick();
+  });
+}
 
 function wireSidebarNav() {
   document.querySelectorAll('.nav-link[data-view]').forEach((btn) => {
@@ -61,7 +66,7 @@ function wireStaticButtons() {
     addNotificationBtn: openAddNotificationModal,
     editFacultyProfileBtn: openEditFacultyProfileModal,
     exportStudentsBtn: exportStudentsCsv,
-    clearActivityBtn: () => confirmDelete('Clear the entire activity history?', () => { clearActivityLog(); showToast('Activity history cleared', 'info'); renderAll(); })
+    clearActivityBtn: () => confirmDelete('Clear the entire activity history?', async () => { await clearActivityLog(); showToast('Activity history cleared', 'info'); await renderAll(); })
   };
   Object.entries(map).forEach(([id, handler]) => {
     const el = document.getElementById(id);
@@ -75,8 +80,8 @@ function wireStaticButtons() {
   if (studentStatusFilter) studentStatusFilter.addEventListener('change', () => { studentsPage = 1; renderStudents(); });
 }
 
-function exportStudentsCsv() {
-  const students = getData(CDAD_KEYS.STUDENTS);
+async function exportStudentsCsv() {
+  const students = await getData(CDAD_KEYS.STUDENTS);
   const header = ['Student ID', 'Name', 'Email', 'Group', 'Course', 'Year', 'Status'];
   const rows = students.map((s) => [s.displayId, s.name, s.email, s.group, s.course, s.year, s.status]);
   const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v || '').replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -89,44 +94,41 @@ function exportStudentsCsv() {
   showToast('Students exported', 'success');
 }
 
-/** Wipes every student record and cleans up dangling references in groups
-    (members/leader) so nothing points at a student that no longer exists.
-    Marks, requests, and notifications tied to deleted students are left in
-    place (they just become orphaned/inert) rather than cascading further. */
-function confirmDeleteAllStudents() {
-  const count = getData(CDAD_KEYS.STUDENTS).length;
+/** Wipes every student record. Groups' member lists/leaders fall out
+    automatically (students.group_id disappears with the row; the
+    team_leader_id FK is ON DELETE SET NULL) — see server/db.js. */
+async function confirmDeleteAllStudents() {
+  const students = await getData(CDAD_KEYS.STUDENTS);
+  const count = students.length;
   if (count === 0) { showToast('There are no students to delete.', 'info'); return; }
-  confirmDelete(`Delete all ${count} students? Every group's member list and leader will also be cleared. This cannot be undone.`, () => {
-    saveData(CDAD_KEYS.STUDENTS, []);
-    const groups = getData(CDAD_KEYS.GROUPS).map((g) => Object.assign({}, g, { members: [], teamLeader: '' }));
-    saveData(CDAD_KEYS.GROUPS, groups);
-    logActivity(`Deleted all ${count} students and cleared group memberships`);
+  confirmDelete(`Delete all ${count} students? Every group's member list and leader will also be cleared. This cannot be undone.`, async () => {
+    await fetch('/api/students', { method: 'DELETE', credentials: 'include' });
     showToast(`Deleted ${count} students`, 'success');
-    renderAll();
+    await renderAll();
   });
 }
 
-function renderAll() {
-  renderTopbar();
+async function renderAll() {
+  await renderTopbar();
   renderSidebarUser();
-  renderOverview();
-  renderStudents();
-  renderGroups();
-  renderProjects();
-  renderMarksTable();
-  renderPresentations();
-  renderSubmissionsHub();
-  renderRequests();
-  renderNotifications();
-  renderAnnouncements();
+  await renderOverview();
+  await renderStudents();
+  await renderGroups();
+  await renderProjects();
+  await renderMarksTable();
+  await renderPresentations();
+  await renderSubmissionsHub();
+  await renderRequests();
+  await renderNotifications();
+  await renderAnnouncements();
   renderFacultyProfile();
-  renderActivity();
+  await renderActivity();
 }
 
 /* ================= Sidebar / Topbar ================= */
 function renderSidebarUser() { /* sidebar shows nav only in this theme; user lives in the topbar */ }
 
-function renderTopbar() {
+async function renderTopbar() {
   const welcome = document.getElementById('welcomeMsg');
   if (welcome) welcome.textContent = `Welcome back, ${FAC.name.split(' ')[0]} 👋`;
   const topbarUser = document.getElementById('topbarUser');
@@ -138,7 +140,9 @@ function renderTopbar() {
         <div class="topbar-user__role">${escapeHtml(FAC.name)}</div>
       </div>`;
   }
-  const count = unreadCount({ type: 'faculty', displayId: FAC.displayId }) + allRequests().filter((r) => r.status === 'Pending').length;
+  const unread = await unreadCount({ type: 'faculty', displayId: FAC.displayId });
+  const requests = await allRequests();
+  const count = unread + requests.filter((r) => r.status === 'Pending').length;
   const bellBadge = document.getElementById('notifBadge');
   if (bellBadge) { bellBadge.textContent = count; bellBadge.style.display = count > 0 ? 'flex' : 'none'; }
   const sideBadge = document.getElementById('sidebarNotifBadge');
@@ -146,16 +150,17 @@ function renderTopbar() {
 }
 
 /* ================= Overview: dashboard cards + charts (Sections 13/14) ================= */
-function renderOverview() {
+async function renderOverview() {
   const host = document.getElementById('overviewStats');
   if (!host) return;
-  const students = getData(CDAD_KEYS.STUDENTS);
-  const groups = getData(CDAD_KEYS.GROUPS);
-  const projects = getData(CDAD_KEYS.PROJECTS);
-  const requests = getData(CDAD_KEYS.REQUESTS);
+  const students = await getData(CDAD_KEYS.STUDENTS);
+  const groups = await getData(CDAD_KEYS.GROUPS);
+  const projects = await getData(CDAD_KEYS.PROJECTS);
+  const requests = await getData(CDAD_KEYS.REQUESTS);
+  const peerRequests = await allStudentRequests();
   const activeProjects = projects.filter((p) => p.status !== 'Completed').length;
   const completedProjects = projects.filter((p) => p.status === 'Completed').length;
-  const pendingRequests = requests.filter((r) => r.status === 'Pending').length + allStudentRequests().filter((r) => r.status === 'Pending').length;
+  const pendingRequests = requests.filter((r) => r.status === 'Pending').length + peerRequests.filter((r) => r.status === 'Pending').length;
 
   host.innerHTML = `
     <div class="stat-tile"><div class="stat-tile__label">Total Students</div><div class="stat-tile__value">${students.length}</div><div class="stat-tile__sub">${students.filter(s=>s.status==='Active').length} active</div></div>
@@ -190,10 +195,10 @@ function renderOverview() {
 }
 
 /* ================= Students (Section 1) ================= */
-function renderStudents() {
+async function renderStudents() {
   const host = document.getElementById('studentsTableBody');
   if (!host) return;
-  const groups = getData(CDAD_KEYS.GROUPS);
+  const groups = await getData(CDAD_KEYS.GROUPS);
   const groupFilterEl = document.getElementById('studentGroupFilter');
   if (groupFilterEl && groupFilterEl.dataset.built !== '1') {
     groupFilterEl.innerHTML = `<option value="">All Groups</option>` + groups.map((g) => `<option value="${g.displayId}">${g.displayId}</option>`).join('');
@@ -203,7 +208,7 @@ function renderStudents() {
   const groupFilter = document.getElementById('studentGroupFilter')?.value || '';
   const statusFilter = document.getElementById('studentStatusFilter')?.value || '';
 
-  let students = getData(CDAD_KEYS.STUDENTS);
+  let students = await getData(CDAD_KEYS.STUDENTS);
   if (search) students = students.filter((s) => (s.name + s.email + s.displayId).toLowerCase().includes(search));
   if (groupFilter) students = students.filter((s) => s.group === groupFilter);
   if (statusFilter) students = students.filter((s) => s.status === statusFilter);
@@ -212,10 +217,13 @@ function renderStudents() {
   if (studentsPage > totalPages) studentsPage = totalPages;
   const pageStudents = students.slice((studentsPage - 1) * STUDENTS_PAGE_SIZE, studentsPage * STUDENTS_PAGE_SIZE);
 
+  const projects = await getData(CDAD_KEYS.PROJECTS);
+  const marks = await getData(CDAD_KEYS.MARKS);
+
   host.innerHTML = pageStudents.length ? pageStudents.map((s) => {
-    const group = getGroup(s.group);
-    const project = group ? getProject(group.project) : null;
-    const marksRec = marksForStudent(s.displayId);
+    const group = groups.find((g) => g.displayId === s.group);
+    const project = group ? projects.find((p) => p.displayId === group.project) : null;
+    const marksRec = marks.find((m) => m.studentId === s.displayId);
     const totals = marksRec ? deriveMarkTotals(marksRec) : null;
     return `
     <tr>
@@ -244,16 +252,16 @@ function renderStudents() {
   }).join('') : `<tr class="empty-row"><td colspan="8">No students match your filters.</td></tr>`;
 
   host.querySelectorAll('[data-edit-student]').forEach((b) => b.addEventListener('click', () => openEditStudentModal(b.dataset.editStudent)));
-  host.querySelectorAll('[data-del-student]').forEach((b) => b.addEventListener('click', () => {
-    const s = findData(CDAD_KEYS.STUDENTS, b.dataset.delStudent);
-    confirmDelete(`Delete student ${s.name} (${s.displayId})? Group membership and marks will be cleaned up.`, () => {
-      deleteData(CDAD_KEYS.STUDENTS, s.id);
-      getData(CDAD_KEYS.GROUPS).forEach((g) => {
-        if ((g.members || []).includes(s.displayId)) removeMember(g.id, s.displayId);
-      });
-      logActivity(`Student ${s.displayId} deleted`);
+  host.querySelectorAll('[data-del-student]').forEach((b) => b.addEventListener('click', async () => {
+    const s = await findData(CDAD_KEYS.STUDENTS, b.dataset.delStudent);
+    confirmDelete(`Delete student ${s.name} (${s.displayId})? Group membership and marks will be cleaned up.`, async () => {
+      if (s.group) {
+        const group = await getGroup(s.group);
+        if (group) await removeMember(group.id, s.displayId);
+      }
+      await deleteData(CDAD_KEYS.STUDENTS, s.id);
       showToast('Student deleted', 'success');
-      renderAll();
+      await renderAll();
     });
   }));
 
@@ -291,7 +299,7 @@ function renderStudentsPagination(total, totalPages) {
 }
 
 function openAddStudentModal() { studentFormModal('Add Student', null); }
-function openEditStudentModal(id) { studentFormModal('Edit Student', findData(CDAD_KEYS.STUDENTS, id)); }
+async function openEditStudentModal(id) { studentFormModal('Edit Student', await findData(CDAD_KEYS.STUDENTS, id)); }
 
 /* ================= Bulk import students from CSV ================= */
 /** Minimal dependency-free CSV parser. Handles quoted fields and commas inside quotes. */
@@ -348,11 +356,11 @@ function openImportStudentsModal() {
       let parsedRows = [];
       document.getElementById('cancelImport').addEventListener('click', closeModal);
 
-      document.getElementById('csvFileInput').addEventListener('change', (e) => {
+      document.getElementById('csvFileInput').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
           const rows = parseCsv(evt.target.result);
           if (rows.length < 2) {
             document.getElementById('importPreview').innerHTML = `<div class="login-error show" style="display:block;">No data rows found in this file.</div>`;
@@ -372,7 +380,7 @@ function openImportStudentsModal() {
             return;
           }
 
-          const existingIds = new Set(getData(CDAD_KEYS.STUDENTS).map((s) => s.displayId.toLowerCase()));
+          const existingIds = new Set((await getData(CDAD_KEYS.STUDENTS)).map((s) => s.displayId.toLowerCase()));
           const dataRows = rows.slice(1);
           const totalDataRows = dataRows.length;
 
@@ -408,125 +416,109 @@ function openImportStudentsModal() {
         reader.readAsText(file);
       });
 
-      document.getElementById('confirmImportBtn').addEventListener('click', () => {
-        const existingIds = new Set(getData(CDAD_KEYS.STUDENTS).map((s) => s.displayId.toLowerCase()));
+      document.getElementById('confirmImportBtn').addEventListener('click', async () => {
+        const existingIds = new Set((await getData(CDAD_KEYS.STUDENTS)).map((s) => s.displayId.toLowerCase()));
         let imported = 0;
-        parsedRows.forEach((r) => {
-          if (existingIds.has(r.displayId.toLowerCase())) return;
+        for (const r of parsedRows) {
+          if (existingIds.has(r.displayId.toLowerCase())) continue;
           const newStudent = {
-            id: generateId('STU'),
             displayId: r.displayId,
             name: r.name,
             email: r.email || '',
             password: r.password || 'PASS123',
             phone: r.phone || '',
-            course: '',
-            year: '',
-            department: '',
+            course: '', year: '', department: '',
             group: r.group || '',
             role: 'Member',
             status: 'Active',
-            avatar: '',
-            connections: []
+            avatar: ''
           };
-          addData(CDAD_KEYS.STUDENTS, newStudent);
-          if (newStudent.group) {
-            const g = getGroup(newStudent.group);
-            if (g) addMember(g.id, newStudent.displayId);
-          }
+          await addData(CDAD_KEYS.STUDENTS, newStudent);
           existingIds.add(r.displayId.toLowerCase());
           imported++;
-        });
-        logActivity(`Imported ${imported} student(s) from CSV`);
+        }
         closeModal();
         showToast(`Imported ${imported} student(s)`, 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 function studentFormModal(title, student) {
-  const groups = getData(CDAD_KEYS.GROUPS);
-  openModal(title, `
-    <form id="studentForm">
-      <div class="form-grid">
-        <div class="field full"><label>Name</label><input name="name" required value="${escapeHtml(student?.name || '')}"></div>
-        <div class="field"><label>Email</label><input type="email" name="email" required value="${escapeHtml(student?.email || '')}"></div>
-        <div class="field"><label>Password</label><input name="password" required value="${escapeHtml(student?.password || 'student123')}"></div>
-        <div class="field"><label>Phone</label><input name="phone" value="${escapeHtml(student?.phone || '')}"></div>
-        <div class="field">
-          <label>Course</label>
-          <select name="course">
-            ${['Computer Engineering','Information Technology','AI & Data Science','Electronics Engineering'].map((c) => `<option ${student?.course===c?'selected':''}>${c}</option>`).join('')}
-          </select>
+  getData(CDAD_KEYS.GROUPS).then((groups) => {
+    openModal(title, `
+      <form id="studentForm">
+        <div class="form-grid">
+          <div class="field full"><label>Name</label><input name="name" required value="${escapeHtml(student?.name || '')}"></div>
+          <div class="field"><label>Email</label><input type="email" name="email" required value="${escapeHtml(student?.email || '')}"></div>
+          <div class="field"><label>Password</label><input name="password" ${student ? '' : 'required'} placeholder="${student ? 'Leave blank to keep current' : ''}" value="${student ? '' : 'PASS123'}"></div>
+          <div class="field"><label>Phone</label><input name="phone" value="${escapeHtml(student?.phone || '')}"></div>
+          <div class="field">
+            <label>Course</label>
+            <select name="course">
+              ${['Computer Engineering','Information Technology','AI & Data Science','Electronics Engineering'].map((c) => `<option ${student?.course===c?'selected':''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Year</label><input name="year" value="${escapeHtml(student?.year || '1st Year')}"></div>
+          <div class="field"><label>Department</label><input name="department" value="${escapeHtml(student?.department || 'Computer Engineering')}"></div>
+          <div class="field">
+            <label>Group</label>
+            <select name="group">
+              <option value="">— None —</option>
+              ${groups.map((g) => `<option value="${g.displayId}" ${student?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>Role</label>
+            <select name="role"><option ${student?.role==='Member'?'selected':''}>Member</option><option ${student?.role==='Team Leader'?'selected':''}>Team Leader</option></select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select name="status"><option ${student?.status==='Active'?'selected':''}>Active</option><option ${student?.status==='Inactive'?'selected':''}>Inactive</option></select>
+          </div>
+          <div class="field full"><label>Profile Image URL</label><input name="avatar" value="${escapeHtml(student?.avatar || '')}"></div>
         </div>
-        <div class="field"><label>Year</label><input name="year" value="${escapeHtml(student?.year || '1st Year')}"></div>
-        <div class="field"><label>Department</label><input name="department" value="${escapeHtml(student?.department || 'Computer Engineering')}"></div>
-        <div class="field">
-          <label>Group</label>
-          <select name="group">
-            <option value="">— None —</option>
-            ${groups.map((g) => `<option value="${g.displayId}" ${student?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}
-          </select>
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="cancelStudentForm">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save Changes</button>
         </div>
-        <div class="field">
-          <label>Role</label>
-          <select name="role"><option ${student?.role==='Member'?'selected':''}>Member</option><option ${student?.role==='Team Leader'?'selected':''}>Team Leader</option></select>
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <select name="status"><option ${student?.status==='Active'?'selected':''}>Active</option><option ${student?.status==='Inactive'?'selected':''}>Inactive</option></select>
-        </div>
-        <div class="field full"><label>Profile Image URL</label><input name="avatar" value="${escapeHtml(student?.avatar || '')}"></div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn--ghost" id="cancelStudentForm">Cancel</button>
-        <button type="submit" class="btn btn--primary">Save Changes</button>
-      </div>
-    </form>
-  `, {
-    onMount: () => {
-      document.getElementById('cancelStudentForm').addEventListener('click', closeModal);
-      document.getElementById('studentForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const fields = {
-          name: fd.get('name').trim(), email: fd.get('email').trim(), password: fd.get('password'),
-          phone: fd.get('phone').trim(), course: fd.get('course'), year: fd.get('year').trim(),
-          department: fd.get('department').trim(), group: fd.get('group'), role: fd.get('role'),
-          status: fd.get('status'), avatar: fd.get('avatar').trim()
-        };
-        if (student) {
-          const oldGroup = student.group;
-          updateData(CDAD_KEYS.STUDENTS, student.id, fields);
-          // keep group membership arrays in sync with the dropdown
-          if (oldGroup !== fields.group) {
-            if (oldGroup) removeMember(getGroup(oldGroup)?.id, student.displayId);
-            if (fields.group) addMember(getGroup(fields.group)?.id, student.displayId);
+      </form>
+    `, {
+      onMount: () => {
+        document.getElementById('cancelStudentForm').addEventListener('click', closeModal);
+        document.getElementById('studentForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const fields = {
+            name: fd.get('name').trim(), email: fd.get('email').trim(),
+            phone: fd.get('phone').trim(), course: fd.get('course'), year: fd.get('year').trim(),
+            department: fd.get('department').trim(), group: fd.get('group'), role: fd.get('role'),
+            status: fd.get('status'), avatar: fd.get('avatar').trim()
+          };
+          const password = fd.get('password');
+          if (password) fields.password = password;
+
+          if (student) {
+            await updateData(CDAD_KEYS.STUDENTS, student.id, fields);
+            showToast('Student updated', 'success');
+          } else {
+            await addData(CDAD_KEYS.STUDENTS, fields);
+            showToast('Student added', 'success');
           }
-          logActivity(`Student ${student.displayId} updated`);
-          showToast('Student updated', 'success');
-        } else {
-          const displayId = nextSequentialId(CDAD_KEYS.STUDENTS, 'ST', 3);
-          const newStudent = Object.assign({ id: generateId('STU'), displayId, connections: [] }, fields);
-          addData(CDAD_KEYS.STUDENTS, newStudent);
-          if (fields.group) addMember(getGroup(fields.group)?.id, displayId);
-          logActivity(`Student ${displayId} added`);
-          showToast('Student added', 'success');
-        }
-        closeModal();
-        renderAll();
-      });
-    }
+          closeModal();
+          await renderAll();
+        });
+      }
+    });
   });
 }
 
 /* ================= Groups (Section 2) ================= */
-function renderGroups() {
+async function renderGroups() {
   const host = document.getElementById('groupsGrid');
   if (!host) return;
-  const groups = allGroups();
+  const groups = await allGroups();
   host.innerHTML = groups.length ? groups.map((g) => `
     <div class="card">
       <div class="card__top">
@@ -550,77 +542,90 @@ function renderGroups() {
 
   host.querySelectorAll('[data-edit-group]').forEach((b) => b.addEventListener('click', () => openEditGroupModal(b.dataset.editGroup)));
   host.querySelectorAll('[data-view-group]').forEach((b) => b.addEventListener('click', () => openGroupMembersModal(b.dataset.viewGroup)));
-  host.querySelectorAll('[data-del-group]').forEach((b) => b.addEventListener('click', () => {
-    const g = findData(CDAD_KEYS.GROUPS, b.dataset.delGroup);
-    confirmDelete(`Delete group ${g.name} (${g.displayId})?`, () => { deleteGroup(g.id); showToast('Group deleted', 'success'); renderAll(); });
+  host.querySelectorAll('[data-del-group]').forEach((b) => b.addEventListener('click', async () => {
+    const g = await findData(CDAD_KEYS.GROUPS, b.dataset.delGroup);
+    confirmDelete(`Delete group ${g.name} (${g.displayId})?`, async () => { await deleteGroup(g.id); showToast('Group deleted', 'success'); await renderAll(); });
   }));
 }
 
 function openAddGroupModal() { groupFormModal('Add Group', null); }
-function openEditGroupModal(id) { groupFormModal('Edit Group', findData(CDAD_KEYS.GROUPS, id)); }
+async function openEditGroupModal(id) { groupFormModal('Edit Group', await findData(CDAD_KEYS.GROUPS, id)); }
 
 function groupFormModal(title, group) {
-  const students = getData(CDAD_KEYS.STUDENTS);
-  const projects = getData(CDAD_KEYS.PROJECTS);
-  openModal(title, `
-    <form id="groupForm">
-      <div class="form-grid">
-        <div class="field full"><label>Group Name</label><input name="name" required value="${escapeHtml(group?.name || '')}"></div>
-        <div class="field">
-          <label>Team Leader</label>
-          <select name="teamLeader">
-            <option value="">— None —</option>
-            ${students.map((s) => `<option value="${s.displayId}" ${group?.teamLeader===s.displayId?'selected':''}>${s.displayId} — ${escapeHtml(s.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field">
-          <label>Status</label>
-          <select name="status"><option ${group?.status==='Active'?'selected':''}>Active</option><option ${group?.status==='Inactive'?'selected':''}>Inactive</option><option ${group?.status==='Completed'?'selected':''}>Completed</option></select>
-        </div>
-        <div class="field full">
-          <label>Assigned Project</label>
-          <select name="project">
-            <option value="">— None —</option>
-            ${projects.map((p) => `<option value="${p.displayId}" ${group?.project===p.displayId?'selected':''}>${p.displayId} — ${escapeHtml(p.title)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field full">
-          <label>Members</label>
-          <div class="checkbox-grid">
-            ${students.map((s) => `
-              <label class="checkbox-row">
-                <input type="checkbox" name="members" value="${s.displayId}" ${(group?.members || []).includes(s.displayId)?'checked':''}>
-                ${escapeHtml(s.displayId)} — ${escapeHtml(s.name)}
-              </label>`).join('')}
+  Promise.all([getData(CDAD_KEYS.STUDENTS), getData(CDAD_KEYS.PROJECTS)]).then(([students, projects]) => {
+    openModal(title, `
+      <form id="groupForm">
+        <div class="form-grid">
+          <div class="field full"><label>Group Name</label><input name="name" required value="${escapeHtml(group?.name || '')}"></div>
+          <div class="field">
+            <label>Team Leader</label>
+            <select name="teamLeader">
+              <option value="">— None —</option>
+              ${students.map((s) => `<option value="${s.displayId}" ${group?.teamLeader===s.displayId?'selected':''}>${s.displayId} — ${escapeHtml(s.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select name="status"><option ${group?.status==='Active'?'selected':''}>Active</option><option ${group?.status==='Inactive'?'selected':''}>Inactive</option><option ${group?.status==='Completed'?'selected':''}>Completed</option></select>
+          </div>
+          <div class="field full">
+            <label>Assigned Project</label>
+            <select name="project">
+              <option value="">— None —</option>
+              ${projects.map((p) => `<option value="${p.displayId}" ${group?.project===p.displayId?'selected':''}>${p.displayId} — ${escapeHtml(p.title)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field full">
+            <label>Members</label>
+            <div class="checkbox-grid">
+              ${students.map((s) => `
+                <label class="checkbox-row">
+                  <input type="checkbox" name="members" value="${s.displayId}" ${(group?.members || []).includes(s.displayId)?'checked':''}>
+                  ${escapeHtml(s.displayId)} — ${escapeHtml(s.name)}
+                </label>`).join('')}
+            </div>
           </div>
         </div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn--ghost" id="cancelGroupForm">Cancel</button>
-        <button type="submit" class="btn btn--primary">Save Changes</button>
-      </div>
-    </form>
-  `, {
-    onMount: () => {
-      document.getElementById('cancelGroupForm').addEventListener('click', closeModal);
-      document.getElementById('groupForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const members = fd.getAll('members');
-        const fields = { name: fd.get('name').trim(), teamLeader: fd.get('teamLeader'), status: fd.get('status'), project: fd.get('project'), members };
-        if (group) editGroup(group.id, fields);
-        else createGroup(fields);
-        closeModal();
-        showToast('Group saved', 'success');
-        renderAll();
-      });
-    }
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="cancelGroupForm">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save Changes</button>
+        </div>
+      </form>
+    `, {
+      onMount: () => {
+        document.getElementById('cancelGroupForm').addEventListener('click', closeModal);
+        document.getElementById('groupForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const members = fd.getAll('members');
+          const fields = { name: fd.get('name').trim(), teamLeader: fd.get('teamLeader'), status: fd.get('status'), members };
+          const projectDisplayId = fd.get('project');
+
+          const savedGroup = group ? await editGroup(group.id, fields) : await createGroup(fields);
+
+          const oldProjectDisplayId = group?.project || '';
+          if (projectDisplayId !== oldProjectDisplayId) {
+            if (projectDisplayId) {
+              const targetProj = projects.find((p) => p.displayId === projectDisplayId);
+              if (targetProj) await assignProjectToGroup(targetProj.id, savedGroup.displayId);
+            } else if (oldProjectDisplayId) {
+              const oldProj = projects.find((p) => p.displayId === oldProjectDisplayId);
+              if (oldProj) await assignProjectToGroup(oldProj.id, '');
+            }
+          }
+
+          closeModal();
+          showToast('Group saved', 'success');
+          await renderAll();
+        });
+      }
+    });
   });
 }
 
-function openGroupMembersModal(displayId) {
-  const group = getGroup(displayId);
-  const students = getData(CDAD_KEYS.STUDENTS);
+async function openGroupMembersModal(displayId) {
+  const group = await getGroup(displayId);
+  const students = await getData(CDAD_KEYS.STUDENTS);
   openModal(`${group.name} — Members`, `
     <div class="list-item" style="margin-bottom:14px;"><strong>${memberCount(group)}</strong> member(s) &middot; Leader: ${escapeHtml(group.teamLeader || '—')}</div>
     ${(group.members || []).map((m) => {
@@ -632,21 +637,21 @@ function openGroupMembersModal(displayId) {
     }).join('') || emptyState('No members yet.')}
   `, {
     onMount: () => {
-      document.querySelectorAll('[data-remove-member]').forEach((b) => b.addEventListener('click', () => {
-        removeMember(group.id, b.dataset.removeMember);
+      document.querySelectorAll('[data-remove-member]').forEach((b) => b.addEventListener('click', async () => {
+        await removeMember(group.id, b.dataset.removeMember);
         closeModal();
         showToast('Member removed', 'info');
-        renderAll();
+        await renderAll();
       }));
     }
   });
 }
 
 /* ================= Projects (Section 3 + 4) ================= */
-function renderProjects() {
+async function renderProjects() {
   const host = document.getElementById('projectsGrid');
   if (!host) return;
-  const projects = allProjects();
+  const projects = await allProjects();
   host.innerHTML = projects.length ? projects.map((p) => `
     <div class="card">
       <div class="card__top">
@@ -672,14 +677,14 @@ function renderProjects() {
   host.querySelectorAll('[data-stage-project]').forEach((b) => b.addEventListener('click', () => openStagesModal(b.dataset.stageProject)));
   host.querySelectorAll('[data-review-submission]').forEach((b) => b.addEventListener('click', () => openReviewSubmissionModal(b.dataset.reviewSubmission)));
   host.querySelectorAll('[data-request-submission]').forEach((b) => b.addEventListener('click', () => openRequestSubmissionModal(b.dataset.requestSubmission)));
-  host.querySelectorAll('[data-del-project]').forEach((b) => b.addEventListener('click', () => {
-    const p = findData(CDAD_KEYS.PROJECTS, b.dataset.delProject);
-    confirmDelete(`Delete project ${p.title} (${p.displayId})?`, () => { deleteProject(p.id); showToast('Project deleted', 'success'); renderAll(); });
+  host.querySelectorAll('[data-del-project]').forEach((b) => b.addEventListener('click', async () => {
+    const p = await findData(CDAD_KEYS.PROJECTS, b.dataset.delProject);
+    confirmDelete(`Delete project ${p.title} (${p.displayId})?`, async () => { await deleteProject(p.id); showToast('Project deleted', 'success'); await renderAll(); });
   }));
 }
 
-function openRequestSubmissionModal(projectId) {
-  const project = findData(CDAD_KEYS.PROJECTS, projectId);
+async function openRequestSubmissionModal(projectId) {
+  const project = await findData(CDAD_KEYS.PROJECTS, projectId);
   openModal(`Request Submission — ${project.displayId}`, `
     <p class="field-hint" style="margin-bottom:14px;">This sends a notification straight to group ${escapeHtml(project.group)} asking them to submit their work.</p>
     <form id="requestSubmissionForm">
@@ -692,20 +697,20 @@ function openRequestSubmissionModal(projectId) {
   `, {
     onMount: () => {
       document.getElementById('cancelRequestSubmission').addEventListener('click', closeModal);
-      document.getElementById('requestSubmissionForm').addEventListener('submit', (e) => {
+      document.getElementById('requestSubmissionForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        requestSubmission(projectId, fd.get('message'));
+        await requestSubmission(projectId, fd.get('message'));
         closeModal();
         showToast('Submission request sent', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
-function openReviewSubmissionModal(projectId) {
-  const project = findData(CDAD_KEYS.PROJECTS, projectId);
+async function openReviewSubmissionModal(projectId) {
+  const project = await findData(CDAD_KEYS.PROJECTS, projectId);
   const sub = project.submission;
   if (!sub) return;
   openModal(`Review Submission — ${project.displayId}`, `
@@ -724,27 +729,27 @@ function openReviewSubmissionModal(projectId) {
   `, {
     onMount: () => {
       const form = document.getElementById('reviewSubmissionForm');
-      form.addEventListener('submit', (e) => {
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const note = new FormData(form).get('facultyNote').trim();
-        reviewProjectSubmission(projectId, 'Approved', note);
+        await reviewProjectSubmission(projectId, 'Approved', note);
         closeModal();
         showToast('Submission approved', 'success');
-        renderAll();
+        await renderAll();
       });
-      document.getElementById('rejectSubmissionBtn').addEventListener('click', () => {
+      document.getElementById('rejectSubmissionBtn').addEventListener('click', async () => {
         const note = new FormData(form).get('facultyNote').trim();
-        reviewProjectSubmission(projectId, 'Rejected', note);
+        await reviewProjectSubmission(projectId, 'Rejected', note);
         closeModal();
         showToast('Submission rejected', 'info');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Submissions Hub — every submission, one place ================= */
-function renderSubmissionsHub() {
+async function renderSubmissionsHub() {
   const host = document.getElementById('submissionsTableBody');
   if (!host) return;
 
@@ -755,7 +760,7 @@ function renderSubmissionsHub() {
   }
   const statusFilter = statusFilterEl?.value || '';
 
-  let submissions = allSubmissions();
+  let submissions = await allSubmissions();
   if (statusFilter) submissions = submissions.filter((p) => p.submission.status === statusFilter);
 
   const countLabel = document.getElementById('submissionCountLabel');
@@ -784,68 +789,69 @@ function renderSubmissionsHub() {
 }
 
 function openAddProjectModal() { projectFormModal('Create Project', null); }
-function openEditProjectModal(id) { projectFormModal('Edit Project', findData(CDAD_KEYS.PROJECTS, id)); }
+async function openEditProjectModal(id) { projectFormModal('Edit Project', await findData(CDAD_KEYS.PROJECTS, id)); }
 
 function projectFormModal(title, project) {
-  const groups = allGroups();
-  const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-  openModal(title, `
-    <form id="projectForm">
-      <div class="form-grid">
-        <div class="field full"><label>Project Title</label><input name="title" required value="${escapeHtml(project?.title || '')}"></div>
-        <div class="field full"><label>Description</label><textarea name="description">${escapeHtml(project?.description || '')}</textarea></div>
-        <div class="field full"><label>Tools / Tech Stack</label><input name="techStack" value="${escapeHtml(project?.techStack || '')}" placeholder="e.g. React, Node.js, MongoDB"></div>
-        <div class="field">
-          <label>Group</label>
-          <select name="group"><option value="">— Unassigned —</option>${groups.map((g) => `<option value="${g.displayId}" ${project?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}</select>
+  allGroups().then((groups) => {
+    const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+    openModal(title, `
+      <form id="projectForm">
+        <div class="form-grid">
+          <div class="field full"><label>Project Title</label><input name="title" required value="${escapeHtml(project?.title || '')}"></div>
+          <div class="field full"><label>Description</label><textarea name="description">${escapeHtml(project?.description || '')}</textarea></div>
+          <div class="field full"><label>Tools / Tech Stack</label><input name="techStack" value="${escapeHtml(project?.techStack || '')}" placeholder="e.g. React, Node.js, MongoDB"></div>
+          <div class="field">
+            <label>Group</label>
+            <select name="group"><option value="">— Unassigned —</option>${groups.map((g) => `<option value="${g.displayId}" ${project?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Team Leader</label><input name="teamLeader" value="${escapeHtml(project?.teamLeader || '')}" placeholder="e.g. ST001"></div>
+          <div class="field"><label>Start Date</label><input type="date" name="startDate" value="${isoDate(project?.startDate) || isoDate(new Date())}"></div>
+          <div class="field"><label>Deadline</label><input type="date" name="deadline" value="${isoDate(project?.deadline)}"></div>
+          <div class="field">
+            <label>Status</label>
+            <select name="status">${['Active','In Progress','Completed','On Hold'].map((s) => `<option ${project?.status===s?'selected':''}>${s}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Branch</label><input name="branch" value="${escapeHtml(project?.branch || 'main')}"></div>
+          <div class="field"><label>Repository Name</label><input name="repoName" value="${escapeHtml(project?.repoName || '')}"></div>
+          <div class="field full"><label>GitHub URL</label><input name="githubUrl" value="${escapeHtml(project?.githubUrl || '')}" placeholder="https://github.com/..."></div>
         </div>
-        <div class="field"><label>Team Leader</label><input name="teamLeader" value="${escapeHtml(project?.teamLeader || '')}" placeholder="e.g. ST001"></div>
-        <div class="field"><label>Start Date</label><input type="date" name="startDate" value="${isoDate(project?.startDate) || isoDate(new Date())}"></div>
-        <div class="field"><label>Deadline</label><input type="date" name="deadline" value="${isoDate(project?.deadline)}"></div>
-        <div class="field">
-          <label>Status</label>
-          <select name="status">${['Active','In Progress','Completed','On Hold'].map((s) => `<option ${project?.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="cancelProjectForm">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save Changes</button>
         </div>
-        <div class="field"><label>Branch</label><input name="branch" value="${escapeHtml(project?.branch || 'main')}"></div>
-        <div class="field"><label>Repository Name</label><input name="repoName" value="${escapeHtml(project?.repoName || '')}"></div>
-        <div class="field full"><label>GitHub URL</label><input name="githubUrl" value="${escapeHtml(project?.githubUrl || '')}" placeholder="https://github.com/..."></div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn--ghost" id="cancelProjectForm">Cancel</button>
-        <button type="submit" class="btn btn--primary">Save Changes</button>
-      </div>
-    </form>
-  `, {
-    onMount: () => {
-      document.getElementById('cancelProjectForm').addEventListener('click', closeModal);
-      document.getElementById('projectForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const fields = {
-          title: fd.get('title').trim(), description: fd.get('description').trim(),
-          techStack: fd.get('techStack').trim(),
-          group: fd.get('group'), teamLeader: fd.get('teamLeader').trim(),
-          startDate: fd.get('startDate') ? new Date(fd.get('startDate')).toISOString() : '',
-          deadline: fd.get('deadline') ? new Date(fd.get('deadline')).toISOString() : '',
-          status: fd.get('status'), branch: fd.get('branch').trim(),
-          repoName: fd.get('repoName').trim(), githubUrl: fd.get('githubUrl').trim()
-        };
-        if (project) {
-          editProject(project.id, fields);
-          if (fields.group !== project.group) assignProjectToGroup(project.id, fields.group);
-        } else {
-          createProject(fields);
-        }
-        closeModal();
-        showToast('Project saved', 'success');
-        renderAll();
-      });
-    }
+      </form>
+    `, {
+      onMount: () => {
+        document.getElementById('cancelProjectForm').addEventListener('click', closeModal);
+        document.getElementById('projectForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const fields = {
+            title: fd.get('title').trim(), description: fd.get('description').trim(),
+            techStack: fd.get('techStack').trim(),
+            group: fd.get('group'), teamLeader: fd.get('teamLeader').trim(),
+            startDate: fd.get('startDate') ? new Date(fd.get('startDate')).toISOString() : '',
+            deadline: fd.get('deadline') ? new Date(fd.get('deadline')).toISOString() : '',
+            status: fd.get('status'), branch: fd.get('branch').trim(),
+            repoName: fd.get('repoName').trim(), githubUrl: fd.get('githubUrl').trim()
+          };
+          if (project) {
+            await editProject(project.id, fields);
+            if (fields.group !== project.group) await assignProjectToGroup(project.id, fields.group);
+          } else {
+            await createProject(fields);
+          }
+          closeModal();
+          showToast('Project saved', 'success');
+          await renderAll();
+        });
+      }
+    });
   });
 }
 
-function openStagesModal(projectId) {
-  const project = findData(CDAD_KEYS.PROJECTS, projectId);
+async function openStagesModal(projectId) {
+  const project = await findData(CDAD_KEYS.PROJECTS, projectId);
   openModal(`${project.title} — Stage Progress`, `
     <div class="stage-list">
       ${PROJECT_STAGES.map((s, i) => `
@@ -860,10 +866,10 @@ function openStagesModal(projectId) {
   `, {
     onMount: () => {
       document.querySelectorAll('[data-stage-select]').forEach((sel) => {
-        sel.addEventListener('change', () => {
-          setProjectStage(projectId, sel.dataset.stageSelect, sel.value);
+        sel.addEventListener('change', async () => {
+          await setProjectStage(projectId, sel.dataset.stageSelect, sel.value);
           showToast('Stage updated', 'success');
-          renderAll();
+          await renderAll();
         });
       });
     }
@@ -871,12 +877,13 @@ function openStagesModal(projectId) {
 }
 
 /* ================= Marks (Section 5) ================= */
-function renderMarksTable() {
+async function renderMarksTable() {
   const host = document.getElementById('marksTableBody');
   if (!host) return;
-  const students = getData(CDAD_KEYS.STUDENTS);
+  const students = await getData(CDAD_KEYS.STUDENTS);
+  const marks = await allMarks();
   host.innerHTML = students.length ? students.map((s) => {
-    const m = marksForStudent(s.displayId);
+    const m = marks.find((x) => x.studentId === s.displayId);
     const t = m ? deriveMarkTotals(m) : null;
     return `
       <tr>
@@ -897,15 +904,15 @@ function renderMarksTable() {
 
   host.querySelectorAll('[data-edit-marks]').forEach((b) => b.addEventListener('click', () => openMarksModal(b.dataset.editMarks)));
   host.querySelectorAll('[data-reset-marks]').forEach((b) => b.addEventListener('click', () => {
-    confirmDelete('Reset all marks for this student to zero?', () => { resetMarks(b.dataset.resetMarks); showToast('Marks reset', 'info'); renderAll(); });
+    confirmDelete('Reset all marks for this student to zero?', async () => { await resetMarks(b.dataset.resetMarks); showToast('Marks reset', 'info'); await renderAll(); });
   }));
   host.querySelectorAll('[data-del-marks]').forEach((b) => b.addEventListener('click', () => {
-    confirmDelete("Delete this student's marks record?", () => { deleteMarks(b.dataset.delMarks); showToast('Marks deleted', 'success'); renderAll(); });
+    confirmDelete("Delete this student's marks record?", async () => { await deleteMarks(b.dataset.delMarks); showToast('Marks deleted', 'success'); await renderAll(); });
   }));
 }
 
-function openMarksModal(studentDisplayId) {
-  const m = marksForStudent(studentDisplayId) || { internal: 0, internalMax: 20, project: 0, projectMax: 40, presentation: 0, presentationMax: 20, viva: 0, vivaMax: 10 };
+async function openMarksModal(studentDisplayId) {
+  const m = (await marksForStudent(studentDisplayId)) || { internal: 0, internalMax: 20, project: 0, projectMax: 40, presentation: 0, presentationMax: 20, viva: 0, vivaMax: 10 };
   openModal(`Edit Marks — ${studentDisplayId}`, `
     <form id="marksForm">
       <div class="form-grid">
@@ -922,10 +929,10 @@ function openMarksModal(studentDisplayId) {
   `, {
     onMount: () => {
       document.getElementById('cancelMarksForm').addEventListener('click', closeModal);
-      document.getElementById('marksForm').addEventListener('submit', (e) => {
+      document.getElementById('marksForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        upsertMarks(studentDisplayId, {
+        await upsertMarks(studentDisplayId, {
           internal: Number(fd.get('internal')) || 0,
           project: Number(fd.get('project')) || 0,
           presentation: Number(fd.get('presentation')) || 0,
@@ -933,17 +940,17 @@ function openMarksModal(studentDisplayId) {
         });
         closeModal();
         showToast('Marks saved', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Presentations (Section 6) ================= */
-function renderPresentations() {
+async function renderPresentations() {
   const host = document.getElementById('presentationsTableBody');
   if (!host) return;
-  const list = allPresentations();
+  const list = await allPresentations();
   host.innerHTML = list.length ? list.map((p) => `
     <tr>
       <td class="mono">${escapeHtml(p.displayId)}</td>
@@ -960,62 +967,64 @@ function renderPresentations() {
       </td>
     </tr>`).join('') : `<tr class="empty-row"><td colspan="7">No presentations scheduled.</td></tr>`;
 
-  host.querySelectorAll('[data-edit-pres]').forEach((b) => b.addEventListener('click', () => openPresentationModal(findData(CDAD_KEYS.PRESENTATIONS, b.dataset.editPres))));
-  host.querySelectorAll('[data-complete-pres]').forEach((b) => b.addEventListener('click', () => { completePresentation(b.dataset.completePres); showToast('Marked completed', 'success'); renderAll(); }));
-  host.querySelectorAll('[data-cancel-pres]').forEach((b) => b.addEventListener('click', () => { cancelPresentation(b.dataset.cancelPres); showToast('Presentation cancelled', 'info'); renderAll(); }));
+  host.querySelectorAll('[data-edit-pres]').forEach((b) => b.addEventListener('click', async () => openPresentationModal(await findData(CDAD_KEYS.PRESENTATIONS, b.dataset.editPres))));
+  host.querySelectorAll('[data-complete-pres]').forEach((b) => b.addEventListener('click', async () => { await completePresentation(b.dataset.completePres); showToast('Marked completed', 'success'); await renderAll(); }));
+  host.querySelectorAll('[data-cancel-pres]').forEach((b) => b.addEventListener('click', async () => { await cancelPresentation(b.dataset.cancelPres); showToast('Presentation cancelled', 'info'); await renderAll(); }));
   host.querySelectorAll('[data-del-pres]').forEach((b) => b.addEventListener('click', () => {
-    confirmDelete('Delete this presentation?', () => { deletePresentation(b.dataset.delPres); showToast('Deleted', 'success'); renderAll(); });
+    confirmDelete('Delete this presentation?', async () => { await deletePresentation(b.dataset.delPres); showToast('Deleted', 'success'); await renderAll(); });
   }));
 }
 
 function openAddPresentationModal() { openPresentationModal(null); }
 
 function openPresentationModal(pres) {
-  const groups = allGroups();
-  const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
-  openModal(pres ? 'Edit Presentation' : 'Schedule Presentation', `
-    <form id="presForm">
-      <div class="form-grid">
-        <div class="field full">
-          <label>Group</label>
-          <select name="group" required>${groups.map((g) => `<option value="${g.displayId}" ${pres?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}</select>
+  allGroups().then((groups) => {
+    const isoDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+    openModal(pres ? 'Edit Presentation' : 'Schedule Presentation', `
+      <form id="presForm">
+        <div class="form-grid">
+          <div class="field full">
+            <label>Group</label>
+            <select name="group" required>${groups.map((g) => `<option value="${g.displayId}" ${pres?.group===g.displayId?'selected':''}>${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>Date</label><input type="date" name="date" required value="${isoDate(pres?.date)}"></div>
+          <div class="field"><label>Time</label><input type="time" name="time" required value="${escapeHtml(pres?.time || '10:00')}"></div>
+          <div class="field full"><label>Venue</label><input name="venue" required value="${escapeHtml(pres?.venue || '')}"></div>
+          <div class="field">
+            <label>Status</label>
+            <select name="status">${['Pending','Scheduled','Completed','Cancelled','Rescheduled'].map((s) => `<option ${pres?.status===s?'selected':''}>${s}</option>`).join('')}</select>
+          </div>
+          <div class="field full"><label>Notes</label><textarea name="notes">${escapeHtml(pres?.notes || '')}</textarea></div>
         </div>
-        <div class="field"><label>Date</label><input type="date" name="date" required value="${isoDate(pres?.date)}"></div>
-        <div class="field"><label>Time</label><input type="time" name="time" required value="${escapeHtml(pres?.time || '10:00')}"></div>
-        <div class="field full"><label>Venue</label><input name="venue" required value="${escapeHtml(pres?.venue || '')}"></div>
-        <div class="field">
-          <label>Status</label>
-          <select name="status">${['Pending','Scheduled','Completed','Cancelled','Rescheduled'].map((s) => `<option ${pres?.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="cancelPresForm">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save</button>
         </div>
-        <div class="field full"><label>Notes</label><textarea name="notes">${escapeHtml(pres?.notes || '')}</textarea></div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn--ghost" id="cancelPresForm">Cancel</button>
-        <button type="submit" class="btn btn--primary">Save</button>
-      </div>
-    </form>
-  `, {
-    onMount: () => {
-      document.getElementById('cancelPresForm').addEventListener('click', closeModal);
-      document.getElementById('presForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        const fields = { group: fd.get('group'), date: new Date(fd.get('date')).toISOString(), time: fd.get('time'), venue: fd.get('venue').trim(), status: fd.get('status'), notes: fd.get('notes').trim(), faculty: FAC.displayId };
-        if (pres) editPresentation(pres.id, fields);
-        else createPresentation(fields);
-        closeModal();
-        showToast('Presentation saved', 'success');
-        renderAll();
-      });
-    }
+      </form>
+    `, {
+      onMount: () => {
+        document.getElementById('cancelPresForm').addEventListener('click', closeModal);
+        document.getElementById('presForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const fields = { group: fd.get('group'), date: new Date(fd.get('date')).toISOString(), time: fd.get('time'), venue: fd.get('venue').trim(), status: fd.get('status'), notes: fd.get('notes').trim(), faculty: FAC.displayId };
+          if (pres) await editPresentation(pres.id, fields);
+          else await createPresentation(fields);
+          closeModal();
+          showToast('Presentation saved', 'success');
+          await renderAll();
+        });
+      }
+    });
   });
 }
 
 /* ================= Requests (Section 10) ================= */
-function renderRequests() {
+async function renderRequests() {
   const host = document.getElementById('requestsList');
   if (!host) return;
-  const list = allRequests().sort((a, b) => new Date(b.date) - new Date(a.date));
+  const listRaw = await allRequests();
+  const list = listRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
   host.innerHTML = list.length ? list.map((r) => `
     <div class="list-item ${r.status === 'Pending' ? 'unread' : ''}">
       <div class="list-item__top">
@@ -1035,13 +1044,14 @@ function renderRequests() {
   host.querySelectorAll('[data-accept-req]').forEach((b) => b.addEventListener('click', () => openRespondModal(b.dataset.acceptReq, 'Accepted')));
   host.querySelectorAll('[data-reject-req]').forEach((b) => b.addEventListener('click', () => openRespondModal(b.dataset.rejectReq, 'Rejected')));
   host.querySelectorAll('[data-del-req]').forEach((b) => b.addEventListener('click', () => {
-    confirmDelete('Delete this request?', () => { deleteRequest(b.dataset.delReq); showToast('Deleted', 'success'); renderAll(); });
+    confirmDelete('Delete this request?', async () => { await deleteRequest(b.dataset.delReq); showToast('Deleted', 'success'); await renderAll(); });
   }));
 
   // Peer (student-to-student) requests — read-only oversight list
   const peerHost = document.getElementById('peerRequestsMonitor');
   if (peerHost) {
-    const peers = allStudentRequests().sort((a, b) => new Date(b.date) - new Date(a.date));
+    const peersRaw = await allStudentRequests();
+    const peers = peersRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
     peerHost.innerHTML = peers.length ? peers.map((r) => `
       <div class="list-item">
         <div class="list-item__top">
@@ -1056,7 +1066,8 @@ function renderRequests() {
   // Group join requests (student -> group leader) — read-only oversight list
   const groupJoinHost = document.getElementById('groupJoinRequestsMonitor');
   if (groupJoinHost) {
-    const joinReqs = allGroupJoinRequests().sort((a, b) => new Date(b.date) - new Date(a.date));
+    const joinReqsRaw = await allGroupJoinRequests();
+    const joinReqs = joinReqsRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
     groupJoinHost.innerHTML = joinReqs.length ? joinReqs.map((r) => `
       <div class="list-item">
         <div class="list-item__top">
@@ -1081,23 +1092,28 @@ function openRespondModal(id, status) {
   `, {
     onMount: () => {
       document.getElementById('cancelRespond').addEventListener('click', closeModal);
-      document.getElementById('respondForm').addEventListener('submit', (e) => {
+      document.getElementById('respondForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        respondToRequest(id, status, fd.get('response').trim());
+        await respondToRequest(id, status, fd.get('response').trim());
         closeModal();
         showToast(`Request ${status.toLowerCase()}`, 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
-/* ================= Notifications (Section 11) ================= */
-function renderNotifications() {
+/* ================= Notifications (Section 11) =================
+   This admin view shows EVERY notification in the system (not just
+   ones addressed to faculty), so it uses the dedicated unscoped
+   /api/notifications/all endpoint instead of the session-scoped
+   getData(CDAD_KEYS.NOTIFICATIONS). */
+async function renderNotifications() {
   const host = document.getElementById('notificationsList');
   if (!host) return;
-  const list = getData(CDAD_KEYS.NOTIFICATIONS).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const listRaw = await allNotificationsAdmin();
+  const list = listRaw.sort((a, b) => new Date(b.date) - new Date(a.date));
   host.innerHTML = list.length ? list.map((n) => `
     <div class="list-item ${n.read ? '' : 'unread'}">
       <div class="list-item__top">
@@ -1106,66 +1122,64 @@ function renderNotifications() {
       </div>
       <div class="list-item__body">${escapeHtml(n.message)}</div>
       <div class="list-item__foot">
-        <button class="btn btn--ghost btn--sm" data-toggle-read="${n.id}">${n.read ? 'Mark unread' : 'Mark read'}</button>
+        <button class="btn btn--ghost btn--sm" data-toggle-read="${n.id}" data-current-read="${n.read ? '1' : '0'}">${n.read ? 'Mark unread' : 'Mark read'}</button>
         <button class="btn btn--danger btn--sm" data-del-notif="${n.id}">Delete</button>
       </div>
     </div>`).join('') : emptyState('No notifications yet.');
 
-  host.querySelectorAll('[data-toggle-read]').forEach((b) => b.addEventListener('click', () => {
-    const n = findData(CDAD_KEYS.NOTIFICATIONS, b.dataset.toggleRead);
-    markNotificationRead(n.id, !n.read);
-    renderAll();
+  host.querySelectorAll('[data-toggle-read]').forEach((b) => b.addEventListener('click', async () => {
+    await markNotificationRead(b.dataset.toggleRead, b.dataset.currentRead !== '1');
+    await renderAll();
   }));
-  host.querySelectorAll('[data-del-notif]').forEach((b) => b.addEventListener('click', () => { deleteNotification(b.dataset.delNotif); showToast('Deleted', 'success'); renderAll(); }));
+  host.querySelectorAll('[data-del-notif]').forEach((b) => b.addEventListener('click', async () => { await deleteNotification(b.dataset.delNotif); showToast('Deleted', 'success'); await renderAll(); }));
 }
 
 function openAddNotificationModal() {
-  const groups = allGroups();
-  const students = getData(CDAD_KEYS.STUDENTS);
-  openModal('Create Notification', `
-    <form id="notifForm">
-      <div class="form-grid">
-        <div class="field full"><label>Title</label><input name="title" required></div>
-        <div class="field full"><label>Message</label><textarea name="message" required></textarea></div>
-        <div class="field">
-          <label>Recipient</label>
-          <select name="recipient">
-            <option value="all-students">All Students</option>
-            ${groups.map((g) => `<option value="${g.displayId}">${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}
-            ${students.map((s) => `<option value="${s.displayId}">${s.displayId} — ${escapeHtml(s.name)}</option>`).join('')}
-          </select>
+  Promise.all([allGroups(), getData(CDAD_KEYS.STUDENTS)]).then(([groups, students]) => {
+    openModal('Create Notification', `
+      <form id="notifForm">
+        <div class="form-grid">
+          <div class="field full"><label>Title</label><input name="title" required></div>
+          <div class="field full"><label>Message</label><textarea name="message" required></textarea></div>
+          <div class="field">
+            <label>Recipient</label>
+            <select name="recipient">
+              <option value="all-students">All Students</option>
+              ${groups.map((g) => `<option value="${g.displayId}">${g.displayId} — ${escapeHtml(g.name)}</option>`).join('')}
+              ${students.map((s) => `<option value="${s.displayId}">${s.displayId} — ${escapeHtml(s.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <select name="type"><option>info</option><option>alert</option><option>reminder</option></select>
+          </div>
         </div>
-        <div class="field">
-          <label>Type</label>
-          <select name="type"><option>info</option><option>alert</option><option>reminder</option></select>
+        <div class="form-actions">
+          <button type="button" class="btn btn--ghost" id="cancelNotifForm">Cancel</button>
+          <button type="submit" class="btn btn--primary">Create</button>
         </div>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn--ghost" id="cancelNotifForm">Cancel</button>
-        <button type="submit" class="btn btn--primary">Create</button>
-      </div>
-    </form>
-  `, {
-    onMount: () => {
-      document.getElementById('cancelNotifForm').addEventListener('click', closeModal);
-      document.getElementById('notifForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        createNotification({ title: fd.get('title').trim(), message: fd.get('message').trim(), recipient: fd.get('recipient'), type: fd.get('type') });
-        logActivity(`Notification "${fd.get('title')}" created`);
-        closeModal();
-        showToast('Notification created', 'success');
-        renderAll();
-      });
-    }
+      </form>
+    `, {
+      onMount: () => {
+        document.getElementById('cancelNotifForm').addEventListener('click', closeModal);
+        document.getElementById('notifForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          await createNotification({ title: fd.get('title').trim(), message: fd.get('message').trim(), recipient: fd.get('recipient'), type: fd.get('type') });
+          closeModal();
+          showToast('Notification created', 'success');
+          await renderAll();
+        });
+      }
+    });
   });
 }
 
 /* ================= Announcements (Section 12) ================= */
-function renderAnnouncements() {
+async function renderAnnouncements() {
   const host = document.getElementById('announcementsList');
   if (!host) return;
-  const list = allAnnouncements();
+  const list = await allAnnouncements();
   host.innerHTML = list.length ? list.map((a) => `
     <div class="list-item">
       <div class="list-item__top">
@@ -1180,9 +1194,9 @@ function renderAnnouncements() {
       </div>
     </div>`).join('') : emptyState('No announcements yet.');
 
-  host.querySelectorAll('[data-edit-ann]').forEach((b) => b.addEventListener('click', () => openAnnouncementModal(findData(CDAD_KEYS.ANNOUNCEMENTS, b.dataset.editAnn))));
+  host.querySelectorAll('[data-edit-ann]').forEach((b) => b.addEventListener('click', async () => openAnnouncementModal(await findData(CDAD_KEYS.ANNOUNCEMENTS, b.dataset.editAnn))));
   host.querySelectorAll('[data-del-ann]').forEach((b) => b.addEventListener('click', () => {
-    confirmDelete('Delete this announcement?', () => { deleteAnnouncement(b.dataset.delAnn); showToast('Deleted', 'success'); renderAll(); });
+    confirmDelete('Delete this announcement?', async () => { await deleteAnnouncement(b.dataset.delAnn); showToast('Deleted', 'success'); await renderAll(); });
   }));
 }
 
@@ -1211,15 +1225,15 @@ function openAnnouncementModal(ann) {
   `, {
     onMount: () => {
       document.getElementById('cancelAnnForm').addEventListener('click', closeModal);
-      document.getElementById('annForm').addEventListener('submit', (e) => {
+      document.getElementById('annForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
         const fields = { title: fd.get('title').trim(), message: fd.get('message').trim(), priority: fd.get('priority'), status: fd.get('status'), author: FAC.name };
-        if (ann) editAnnouncement(ann.id, fields);
-        else createAnnouncement(fields);
+        if (ann) await editAnnouncement(ann.id, fields);
+        else await createAnnouncement(fields);
         closeModal();
         showToast('Announcement saved', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
@@ -1245,6 +1259,15 @@ function renderFacultyProfile() {
     </div>`;
 }
 
+/** PUT /api/faculty/:id — the only write faculty.js makes to its own record. */
+async function updateFacultyProfile(id, fields) {
+  const res = await fetch(`/api/faculty/${id}`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields)
+  });
+  return res.ok ? res.json() : null;
+}
+
 function openEditFacultyProfileModal() {
   openModal('Edit Faculty Profile', `
     <form id="facProfileForm">
@@ -1265,29 +1288,28 @@ function openEditFacultyProfileModal() {
   `, {
     onMount: () => {
       document.getElementById('cancelFacProfile').addEventListener('click', closeModal);
-      document.getElementById('facProfileForm').addEventListener('submit', (e) => {
+      document.getElementById('facProfileForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        updateData(CDAD_KEYS.FACULTY, FAC.id, {
+        await updateFacultyProfile(FAC.id, {
           name: fd.get('name').trim(), email: fd.get('email').trim(), phone: fd.get('phone').trim(),
           department: fd.get('department').trim(), designation: fd.get('designation').trim(),
           session: fd.get('session').trim(), avatar: fd.get('avatar').trim()
         });
-        FAC = currentFacultyRecord();
-        logActivity('Faculty profile updated');
+        FAC = await currentFacultyRecord();
         closeModal();
         showToast('Profile updated', 'success');
-        renderAll();
+        await renderAll();
       });
     }
   });
 }
 
 /* ================= Activity Log (Section 15) ================= */
-function renderActivity() {
+async function renderActivity() {
   const host = document.getElementById('activityList');
   if (!host) return;
-  const list = getData(CDAD_KEYS.ACTIVITY).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const list = await getData(CDAD_KEYS.ACTIVITY);
   host.innerHTML = list.length ? list.map((a) => `
     <div class="activity-item">
       <div class="activity-dot"></div>

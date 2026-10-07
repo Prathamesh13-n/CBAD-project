@@ -1,8 +1,9 @@
 /* ============================================================
    CDAD :: storage.js
-   Single source of truth for all LocalStorage access.
-   Every other file MUST go through these functions —
-   never call localStorage.getItem/setItem directly elsewhere.
+   Single source of truth for all server access. Same six function
+   names as the old LocalStorage version, now async and backed by
+   fetch() against the Express/SQLite backend — every other file
+   still calls these and nothing else, just with `await` added.
    ============================================================ */
 
 const CDAD_KEYS = {
@@ -17,83 +18,67 @@ const CDAD_KEYS = {
   NOTIFICATIONS: 'cdad_notifications',
   ANNOUNCEMENTS: 'cdad_announcements',
   FACULTY: 'cdad_faculty',
-  ACTIVITY: 'cdad_activity',
-  CURRENT_USER: 'cdad_current_user',
-  SEEDED: 'cdad_seeded'
+  ACTIVITY: 'cdad_activity'
 };
 
-/** Read an array (or object) from LocalStorage. Returns [] if missing/invalid. */
-function getData(key) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return parsed === null || parsed === undefined ? [] : parsed;
-  } catch (e) {
-    console.error('getData parse error for', key, e);
+const CDAD_ENDPOINTS = {
+  [CDAD_KEYS.STUDENTS]: '/api/students',
+  [CDAD_KEYS.GROUPS]: '/api/groups',
+  [CDAD_KEYS.PROJECTS]: '/api/projects',
+  [CDAD_KEYS.MARKS]: '/api/marks',
+  [CDAD_KEYS.PRESENTATIONS]: '/api/presentations',
+  [CDAD_KEYS.REQUESTS]: '/api/requests',
+  [CDAD_KEYS.STUDENT_REQUESTS]: '/api/peer-requests',
+  [CDAD_KEYS.GROUP_JOIN_REQUESTS]: '/api/group-join-requests',
+  [CDAD_KEYS.NOTIFICATIONS]: '/api/notifications',
+  [CDAD_KEYS.ANNOUNCEMENTS]: '/api/announcements',
+  [CDAD_KEYS.ACTIVITY]: '/api/activity'
+};
+
+/** Read the whole collection from the server. Returns [] on failure. */
+async function getData(key) {
+  const res = await fetch(CDAD_ENDPOINTS[key], { credentials: 'include' });
+  if (!res.ok) {
+    console.error('getData failed for', key, res.status);
     return [];
   }
+  return res.json();
 }
 
-/** Overwrite the entire array/object stored at key. */
-function saveData(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
-  return data;
-}
-
-/** Push a new item into an array collection and persist it. */
-function addData(key, item) {
-  const arr = getData(key);
-  arr.push(item);
-  saveData(key, arr);
-  return item;
-}
-
-/** Merge `updates` into the item whose id matches, persist, return updated item. */
-function updateData(key, id, updates) {
-  const arr = getData(key);
-  const idx = arr.findIndex((x) => x.id === id);
-  if (idx === -1) return null;
-  arr[idx] = Object.assign({}, arr[idx], updates);
-  saveData(key, arr);
-  return arr[idx];
-}
-
-/** Remove the item whose id matches. Returns true if something was removed. */
-function deleteData(key, id) {
-  const arr = getData(key);
-  const next = arr.filter((x) => x.id !== id);
-  const removed = next.length !== arr.length;
-  saveData(key, next);
-  return removed;
-}
-
-/** Find a single item by id. */
-function findData(key, id) {
-  return getData(key).find((x) => x.id === id) || null;
-}
-
-/** Find items matching a predicate function. */
-function queryData(key, predicate) {
-  return getData(key).filter(predicate);
-}
-
-/** Generate a short unique id, optionally prefixed (e.g. generateId('ST') -> 'ST17x...'). */
-function generateId(prefix) {
-  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-  const time = Date.now().toString(36).slice(-4).toUpperCase();
-  return `${prefix || 'ID'}-${time}${rand}`;
-}
-
-/** Produce the next sequential display id like ST001, GRP005, PRJ012, PRE003... */
-function nextSequentialId(key, prefix, pad) {
-  const arr = getData(key);
-  let max = 0;
-  arr.forEach((item) => {
-    const idField = item.displayId || '';
-    const match = idField.match(/(\d+)$/);
-    if (match) max = Math.max(max, parseInt(match[1], 10));
+/** POST a new item into the collection, return the server's version of it (with its real id). */
+async function addData(key, item) {
+  const res = await fetch(CDAD_ENDPOINTS[key], {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item)
   });
-  const num = String(max + 1).padStart(pad || 3, '0');
-  return `${prefix}${num}`;
+  if (!res.ok) {
+    console.error('addData failed for', key, res.status);
+    return null;
+  }
+  return res.json();
+}
+
+/** PUT a merge-style update onto the item with this id. Returns the updated item, or null. */
+async function updateData(key, id, updates) {
+  const res = await fetch(`${CDAD_ENDPOINTS[key]}/${id}`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates)
+  });
+  if (!res.ok) {
+    console.error('updateData failed for', key, id, res.status);
+    return null;
+  }
+  return res.json();
+}
+
+/** DELETE the item with this id. Returns true if removed. */
+async function deleteData(key, id) {
+  const res = await fetch(`${CDAD_ENDPOINTS[key]}/${id}`, { method: 'DELETE', credentials: 'include' });
+  return res.ok;
+}
+
+/** Find a single item by id out of the full collection. */
+async function findData(key, id) {
+  const arr = await getData(key);
+  return arr.find((x) => String(x.id) === String(id)) || null;
 }
