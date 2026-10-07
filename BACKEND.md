@@ -57,6 +57,18 @@ just bugs the old version had):
 - Deleting a student who led a group now correctly promotes another
   member to leader, instead of leaving the group leaderless.
 
+## Getting the code
+
+```bash
+git fetch origin
+git checkout backend-migration
+git pull
+```
+
+(If you don't have the repo cloned yet: `git clone
+https://github.com/Prathamesh13-n/CBAD-project.git && cd CBAD-project &&
+git checkout backend-migration`)
+
 ## How to run it
 
 ### Option A — Docker (recommended, avoids Node version issues)
@@ -107,6 +119,10 @@ Same as before — by ID, never by email:
 |---------|------------------|--------------|
 | Faculty | `FAC001`         | `faculty123` |
 | Student | `ADT24SOCB0001`, `ADT24SOCB0002`, `ADT24SOCB0820`, `ADT24SOCB0020` | `PASS123` |
+
+To try the new **Forgot Password** link: on the login page, enter
+`ADT24SOCB0001` + `hanfa@cdad.edu` (the email on file for that student) +
+any new password — it resets immediately, no real email involved.
 
 ## If something doesn't work
 
