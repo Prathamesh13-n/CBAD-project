@@ -137,8 +137,12 @@ The app walks a brand-new student through setup automatically:
   cascades up to the owning group.
 
 ### Submissions
-- Dedicated **Submission** tab for students: submit a link + note for
-  faculty to review, resubmit any time before approval.
+- Dedicated **Submission** tab for students: submit a link, attach a file
+  (PDF, PPT/PPTX, CSV, or DOC/DOCX, max 10MB), and/or a note for faculty to
+  review — at least a link or a file is required, not both. Resubmit any
+  time before approval; a resubmission that doesn't attach a new file
+  keeps whatever file was already on record. Faculty can download the
+  attached file directly from the Review modal or the Submissions Hub.
 - **Faculty can request a submission** from a group, optionally with a
   **due date/time** — this is stored on the project and shown to students
   before they submit.

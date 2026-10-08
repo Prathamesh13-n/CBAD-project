@@ -42,11 +42,17 @@ class, so this branch adds a proper backend.
   service configured — so you verify it's you by entering your ID and
   the email already on file for that account, then set a new password
   immediately.
+- **New: file attachments on the Submission tab.** Students can now
+  attach a PDF, PPT/PPTX, CSV, or DOC/DOCX file (max 10MB) alongside or
+  instead of a link. Files live under `server/data/uploads/` — already
+  covered by the existing Docker volume, no extra setup needed. Faculty
+  can download the attached file from the Review modal or the
+  Submissions Hub.
 
 Nothing else about the UI or workflows changed — group creation/joining,
-submissions, marks, notifications, etc. all work exactly the same from a
-user's point of view. Login credentials are unchanged too (`FAC001` /
-`faculty123`, `ADT24SOCB0001` / `PASS123`, etc.).
+marks, notifications, etc. all work exactly the same from a user's point
+of view. Login credentials are unchanged too (`FAC001` / `faculty123`,
+`ADT24SOCB0001` / `PASS123`, etc.).
 
 Two small behavior fixes came along with the migration (not new features,
 just bugs the old version had):

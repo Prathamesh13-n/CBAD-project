@@ -31,5 +31,13 @@ app.use('/api/activity', require('./routes/activity'));
 const FRONTEND_DIR = path.join(__dirname, '..');
 app.use(express.static(FRONTEND_DIR));
 
+// Catches multer's file-type/size-limit errors (and anything else thrown in
+// a route) and returns clean JSON instead of Express's default HTML page.
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  console.error(err);
+  res.status(400).json({ error: err.message || 'Something went wrong.' });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`CDAD server listening on http://localhost:${PORT}`));

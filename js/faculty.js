@@ -715,7 +715,8 @@ async function openReviewSubmissionModal(projectId) {
   if (!sub) return;
   openModal(`Review Submission — ${project.displayId}`, `
     <div class="list-item" style="margin-bottom:16px;">
-      <div class="list-item__body"><strong>Link:</strong> <a href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">${escapeHtml(sub.link) || '—'}</a></div>
+      ${sub.link ? `<div class="list-item__body"><strong>Link:</strong> <a href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">${escapeHtml(sub.link)}</a></div>` : ''}
+      ${sub.fileName ? `<div class="list-item__body"><strong>File:</strong> <a href="/api/projects/${project.id}/submission/file" target="_blank">${escapeHtml(sub.fileName)}</a> <span class="faint">(${formatFileSize(sub.fileSize)})</span></div>` : ''}
       ${sub.note ? `<div class="list-item__body"><strong>Note:</strong> ${escapeHtml(sub.note)}</div>` : ''}
       <div class="list-item__body faint">Submitted by ${escapeHtml(sub.submittedBy)} on ${formatDateTime(sub.submittedAt)}</div>
     </div>
@@ -779,7 +780,8 @@ async function renderSubmissionsHub() {
         <td>${formatDateTime(sub.submittedAt)}</td>
         <td><span class="badge ${badgeClass}">${escapeHtml(sub.status)}</span></td>
         <td class="table-actions">
-          <a class="btn btn--ghost btn--sm" href="${escapeHtml(sub.link || '#')}" target="_blank" rel="noopener">View Link ↗</a>
+          ${sub.link ? `<a class="btn btn--ghost btn--sm" href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">View Link ↗</a>` : ''}
+          ${sub.fileName ? `<a class="btn btn--ghost btn--sm" href="/api/projects/${p.id}/submission/file" target="_blank">Download File ↗</a>` : ''}
           <button class="btn btn--primary btn--sm" data-review-hub="${p.id}">${sub.status === 'Pending Review' ? 'Review' : 'View / Re-review'}</button>
         </td>
       </tr>`;

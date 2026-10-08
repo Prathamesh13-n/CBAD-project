@@ -5,11 +5,13 @@
    serializeGroup reads progress straight off the linked project
    at request time, so it can't desync.
    ============================================================ */
+const path = require('node:path');
 const express = require('express');
 const { db, nextSequentialId, computeProgressFromStages, PROJECT_STAGES, logActivity } = require('../db');
 const { serializeProject, groupIdByDisplayId, groupDisplayId, studentDisplayId } = require('../serializers');
 const { requireRole } = require('../sessions');
 const { createNotification } = require('../notify');
+const { upload, UPLOAD_DIR, deleteUploadedFile } = require('../upload');
 
 const router = express.Router();
 
@@ -78,6 +80,8 @@ router.put('/:id', requireRole(), (req, res) => {
 router.delete('/:id', requireRole('faculty'), (req, res) => {
   const row = getRow(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
+  const sub = db.prepare('SELECT file_path FROM submissions WHERE project_id = ?').get(row.id);
+  if (sub) deleteUploadedFile(sub.file_path);
   db.prepare('DELETE FROM projects WHERE id = ?').run(row.id);
   logActivity(`Project ${row.display_id} deleted`);
   res.json({ ok: true });
@@ -106,18 +110,38 @@ router.put('/:id/group', requireRole('faculty'), (req, res) => {
 
 /* ================= Submission workflow ================= */
 
-router.post('/:id/submission', requireRole('student'), (req, res) => {
+/** Submission accepts multipart/form-data: `link`, `note` (both optional)
+    plus an optional `file` (PDF/PPT/PPTX/CSV/DOC/DOCX, max 10MB) — see
+    server/upload.js. At least one of link or file (new or already on
+    record) is required; a resubmission that omits a new file keeps
+    whatever file was already attached. */
+router.post('/:id/submission', requireRole('student'), upload.single('file'), (req, res) => {
   const row = getRow(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const { link, note } = req.body || {};
 
+  const existing = db.prepare('SELECT * FROM submissions WHERE project_id = ?').get(row.id);
+  const hasFile = !!req.file || (existing && !!existing.file_path);
+  if (!link && !hasFile) {
+    return res.status(400).json({ error: 'Provide a link or attach a file.' });
+  }
+
+  if (req.file && existing && existing.file_path) deleteUploadedFile(existing.file_path);
+
+  const fileName = req.file ? req.file.originalname : (existing ? existing.file_name : null);
+  const filePath = req.file ? req.file.filename : (existing ? existing.file_path : null);
+  const fileType = req.file ? path.extname(req.file.originalname).slice(1).toLowerCase() : (existing ? existing.file_type : null);
+  const fileSize = req.file ? req.file.size : (existing ? existing.file_size : null);
+
   db.prepare(`
-    INSERT INTO submissions (project_id, link, note, submitted_by_id, submitted_at, status, faculty_note, reviewed_at)
-    VALUES (?, ?, ?, ?, ?, 'Pending Review', '', '')
+    INSERT INTO submissions (project_id, link, note, submitted_by_id, submitted_at, status, faculty_note, reviewed_at,
+      file_name, file_path, file_type, file_size)
+    VALUES (?, ?, ?, ?, ?, 'Pending Review', '', '', ?, ?, ?, ?)
     ON CONFLICT(project_id) DO UPDATE SET link=excluded.link, note=excluded.note,
       submitted_by_id=excluded.submitted_by_id, submitted_at=excluded.submitted_at,
-      status='Pending Review', faculty_note='', reviewed_at=''
-  `).run(row.id, link || '', note || '', req.user.id, new Date().toISOString());
+      status='Pending Review', faculty_note='', reviewed_at='',
+      file_name=excluded.file_name, file_path=excluded.file_path, file_type=excluded.file_type, file_size=excluded.file_size
+  `).run(row.id, link || '', note || '', req.user.id, new Date().toISOString(), fileName, filePath, fileType, fileSize);
 
   const stages = Object.assign({}, JSON.parse(row.stages), { Submission: 'In Progress' });
   const progress = computeProgressFromStages(stages);
@@ -174,6 +198,16 @@ router.put('/:id/submission/review', requireRole('faculty'), (req, res) => {
   });
   logActivity(`Submission for project ${row.display_id} ${decision.toLowerCase()}`);
   res.json(serializeProject(getRow(row.id)));
+});
+
+/** Streams the attached submission file as a download — faculty reviewing it,
+    or the submitting group checking their own upload. */
+router.get('/:id/submission/file', requireRole(), (req, res) => {
+  const row = getRow(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const sub = db.prepare('SELECT file_name, file_path FROM submissions WHERE project_id = ?').get(row.id);
+  if (!sub || !sub.file_path) return res.status(404).json({ error: 'No file attached to this submission.' });
+  res.download(path.join(UPLOAD_DIR, sub.file_path), sub.file_name);
 });
 
 module.exports = router;

@@ -819,7 +819,7 @@ function renderSubmissionBlock(project, hostId) {
   if (!sub) {
     host.innerHTML = `
       <h4 style="font-size:13.5px; margin-bottom:10px;">Final Submission</h4>
-      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Once your project is ready, submit a link (repository, drive folder, etc.) and a short note for faculty to review.</p>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Once your project is ready, submit a link (repository, drive folder, etc.) and/or attach a file (PDF, PPT, CSV, or DOC) for faculty to review.</p>
       <button class="btn btn--primary btn--sm" data-submit-project-btn>Submit Project</button>`;
     host.querySelector('[data-submit-project-btn]').addEventListener('click', () => openSubmitProjectModal(project));
     return;
@@ -829,7 +829,8 @@ function renderSubmissionBlock(project, hostId) {
   host.innerHTML = `
     <div class="section__head"><h4 style="font-size:13.5px; margin:0;">Final Submission</h4><span class="badge ${badgeClass}">${escapeHtml(sub.status)}</span></div>
     <div class="list-item">
-      <div class="list-item__body"><strong>Link:</strong> <a href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">${escapeHtml(sub.link) || '—'}</a></div>
+      ${sub.link ? `<div class="list-item__body"><strong>Link:</strong> <a href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">${escapeHtml(sub.link)}</a></div>` : ''}
+      ${sub.fileName ? `<div class="list-item__body"><strong>File:</strong> <a href="/api/projects/${project.id}/submission/file" target="_blank">${escapeHtml(sub.fileName)}</a> <span class="faint">(${formatFileSize(sub.fileSize)})</span></div>` : ''}
       ${sub.note ? `<div class="list-item__body"><strong>Note:</strong> ${escapeHtml(sub.note)}</div>` : ''}
       <div class="list-item__body faint">Submitted by ${escapeHtml(sub.submittedBy)} on ${formatDateTime(sub.submittedAt)}</div>
       ${sub.facultyNote ? `<div class="list-item__body"><strong>Faculty note:</strong> ${escapeHtml(sub.facultyNote)}</div>` : ''}
@@ -844,9 +845,15 @@ function openSubmitProjectModal(project) {
   const sub = project.submission;
   openModal(sub ? 'Update Submission' : 'Submit Project', `
     <form id="submitProjectForm">
+      <div class="login-error" id="submitProjectError"></div>
       <div class="field full" style="margin-bottom:14px;">
-        <label>Link (repository, drive folder, doc, etc.)</label>
-        <input name="link" type="url" required placeholder="https://..." value="${escapeHtml(sub?.link || project.githubUrl || '')}">
+        <label>Link (repository, drive folder, doc, etc. — optional if attaching a file)</label>
+        <input name="link" type="url" placeholder="https://..." value="${escapeHtml(sub?.link || project.githubUrl || '')}">
+      </div>
+      <div class="field full" style="margin-bottom:14px;">
+        <label>Attach a file (optional — PDF, PPT, CSV, or DOC, max 10MB)</label>
+        <input type="file" name="file" accept=".pdf,.ppt,.pptx,.csv,.doc,.docx">
+        ${sub?.fileName ? `<div class="field-hint" style="margin-top:6px;">Currently attached: ${escapeHtml(sub.fileName)} — choose a new file to replace it, or leave blank to keep it.</div>` : ''}
       </div>
       <div class="field full">
         <label>Note for faculty (optional)</label>
@@ -863,10 +870,23 @@ function openSubmitProjectModal(project) {
       document.getElementById('submitProjectForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        await submitProjectWork(project.id, {
-          link: fd.get('link').trim(),
-          note: fd.get('note').trim()
-        });
+        const link = fd.get('link').trim();
+        const file = e.target.querySelector('input[name=file]').files[0] || null;
+        const errEl = document.getElementById('submitProjectError');
+        errEl.classList.remove('show');
+
+        if (!link && !file && !sub?.fileName) {
+          errEl.textContent = 'Provide a link or attach a file.';
+          errEl.classList.add('show');
+          return;
+        }
+
+        const result = await submitProjectWork(project.id, { link, note: fd.get('note').trim(), file });
+        if (result.error) {
+          errEl.textContent = result.error;
+          errEl.classList.add('show');
+          return;
+        }
         closeModal();
         showToast('Submission sent to faculty for review', 'success');
         await renderAll();

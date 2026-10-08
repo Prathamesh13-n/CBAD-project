@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   submitted_by_id INTEGER REFERENCES students(id),
   submitted_at TEXT,
   status TEXT,
-  faculty_note TEXT, reviewed_at TEXT
+  faculty_note TEXT, reviewed_at TEXT,
+  file_name TEXT, file_path TEXT, file_type TEXT, file_size INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS marks (
@@ -147,6 +148,17 @@ CREATE TABLE IF NOT EXISTS activity (
 
 CREATE TABLE IF NOT EXISTS seed_meta (key TEXT PRIMARY KEY, value TEXT);
 `);
+
+/** Adds a column to an existing table if it's not already there — lets older
+    database files (pulled before a schema change) catch up without a reset. */
+function ensureColumn(table, column, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+ensureColumn('submissions', 'file_name', 'TEXT');
+ensureColumn('submissions', 'file_path', 'TEXT');
+ensureColumn('submissions', 'file_type', 'TEXT');
+ensureColumn('submissions', 'file_size', 'INTEGER');
 
 const PROJECT_STAGES = ['Planning', 'Requirement Analysis', 'Design', 'Development', 'Testing', 'Presentation', 'Submission'];
 

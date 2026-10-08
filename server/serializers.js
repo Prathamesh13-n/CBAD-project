@@ -78,7 +78,9 @@ function serializeSubmission(row) {
   if (!row) return null;
   return {
     link: row.link, note: row.note, submittedBy: studentDisplayId(row.submitted_by_id),
-    submittedAt: row.submitted_at, status: row.status, facultyNote: row.faculty_note, reviewedAt: row.reviewed_at
+    submittedAt: row.submitted_at, status: row.status, facultyNote: row.faculty_note, reviewedAt: row.reviewed_at,
+    // file_path is the internal on-disk name — never exposed; the file is only reachable via the download route.
+    fileName: row.file_name || '', fileType: row.file_type || '', fileSize: row.file_size || 0
   };
 }
 

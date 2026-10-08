@@ -57,13 +57,26 @@ async function assignProjectToGroup(projectId, groupDisplayId) {
 
 /* ================= Submission workflow ================= */
 
-/** Student submits (or resubmits) their work for a project. submittedBy is implicit (the logged-in session). */
-async function submitProjectWork(projectId, { link, note }) {
+/**
+ * Student submits (or resubmits) their work for a project. submittedBy is
+ * implicit (the logged-in session). `file` is an optional File object
+ * (PDF/PPT/PPTX/CSV/DOC/DOCX, max 10MB) — sent as multipart/form-data so
+ * the browser sets the right Content-Type boundary itself; don't set
+ * Content-Type manually here. Returns the updated project on success, or
+ * { error } on failure (wrong file type, too large, or neither a link nor
+ * a file provided).
+ */
+async function submitProjectWork(projectId, { link, note, file }) {
+  const fd = new FormData();
+  fd.append('link', link || '');
+  fd.append('note', note || '');
+  if (file) fd.append('file', file);
   const res = await fetch(`/api/projects/${projectId}/submission`, {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link, note })
+    method: 'POST', credentials: 'include', body: fd
   });
-  return res.ok ? res.json() : null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { error: data.error || 'Submission failed.' };
+  return data;
 }
 
 /** Faculty asks a group to submit their project, with an optional custom message. */
