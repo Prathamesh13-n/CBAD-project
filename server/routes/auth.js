@@ -9,6 +9,8 @@ const bcrypt = require('bcryptjs');
 const { db, logActivity } = require('../db');
 const { serializeStudent, serializeFaculty } = require('../serializers');
 const { COOKIE_NAME, createSession, getSession, destroySession } = require('../sessions');
+const { createResetCode, checkResetCode, consumeResetCode } = require('../resetCodes');
+const { sendResetCodeEmail } = require('../mailer');
 
 const router = express.Router();
 
@@ -44,20 +46,16 @@ router.post('/login', (req, res) => {
 });
 
 /**
- * Self-service password reset — no email is actually sent (there's no
- * mail service configured for this project). Identity is verified by
- * matching the ID against the email already on file for that account;
- * if they match, the new password is set immediately.
+ * Self-service password reset, step 1 of 2. Verifies the ID matches the
+ * email already on file for that account, then emails a 6-digit code to
+ * that address (real email now, via server/mailer.js — Gmail SMTP with
+ * an App Password). Step 2 (POST /forgot-password/confirm) takes that
+ * code + the new password.
  */
-router.post('/forgot-password', (req, res) => {
-  const { role, id, email, newPassword } = req.body || {};
+router.post('/forgot-password/request', async (req, res) => {
+  const { role, id, email } = req.body || {};
   const idLower = String(id || '').trim().toLowerCase();
   const emailLower = String(email || '').trim().toLowerCase();
-  const pass = String(newPassword || '').trim();
-
-  if (pass.length < 4) {
-    return res.status(400).json({ ok: false, error: 'New password must be at least 4 characters.' });
-  }
 
   const table = role === 'faculty' ? 'faculty' : 'students';
   const row = db.prepare(`SELECT * FROM ${table} WHERE LOWER(display_id) = ?`).get(idLower);
@@ -65,8 +63,37 @@ router.post('/forgot-password', (req, res) => {
     return res.status(401).json({ ok: false, error: 'ID and email do not match our records.' });
   }
 
+  const code = createResetCode(role, id);
+  try {
+    await sendResetCodeEmail(row.email, code);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message || 'Could not send the reset email.' });
+  }
+
+  logActivity(`${role === 'faculty' ? 'Faculty' : 'Student'} ${row.display_id} requested a password reset code`);
+  res.json({ ok: true });
+});
+
+/** Self-service password reset, step 2 of 2 — the code emailed in step 1, plus the new password. */
+router.post('/forgot-password/confirm', (req, res) => {
+  const { role, id, code, newPassword } = req.body || {};
+  const idLower = String(id || '').trim().toLowerCase();
+  const pass = String(newPassword || '').trim();
+
+  if (pass.length < 4) {
+    return res.status(400).json({ ok: false, error: 'New password must be at least 4 characters.' });
+  }
+  if (!checkResetCode(role, id, code)) {
+    return res.status(401).json({ ok: false, error: 'That code is invalid or has expired. Request a new one.' });
+  }
+
+  const table = role === 'faculty' ? 'faculty' : 'students';
+  const row = db.prepare(`SELECT * FROM ${table} WHERE LOWER(display_id) = ?`).get(idLower);
+  if (!row) return res.status(404).json({ ok: false, error: 'Account not found.' });
+
   const passwordHash = bcrypt.hashSync(pass, 10);
   db.prepare(`UPDATE ${table} SET password_hash = ? WHERE id = ?`).run(passwordHash, row.id);
+  consumeResetCode(role, id);
   logActivity(`${role === 'faculty' ? 'Faculty' : 'Student'} ${row.display_id} reset their password via Forgot Password`);
   res.json({ ok: true });
 });

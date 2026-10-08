@@ -85,9 +85,11 @@ Faculty can change any student's login ID or password any time from Faculty
 → Students → **Edit ✎**.
 
 Anyone can also reset their own password from the login page's **Forgot
-Password?** link — no email actually gets sent (there's no mail service
-configured), so identity is verified by matching your ID against the email
-already on file for that account, then you set a new password immediately.
+Password?** link: enter your ID and the email on file for your account,
+and a real 6-digit confirmation code is emailed to you (via Gmail SMTP —
+see `server/.env.example` for the one-time setup). Enter that code plus
+your new password to finish. The code expires after 10 minutes and can
+only be used once.
 
 ### First login for a new student
 

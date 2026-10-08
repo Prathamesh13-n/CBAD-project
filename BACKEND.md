@@ -38,16 +38,22 @@ class, so this branch adds a proper backend.
 - **Dockerfile updated** to run the new Node server instead of a static
   nginx container (see "Running with Docker" below).
 - **New: self-service "Forgot Password"** on the login page (it was a
-  dead link before). No email actually gets sent — there's no mail
-  service configured — so you verify it's you by entering your ID and
-  the email already on file for that account, then set a new password
-  immediately.
+  dead link before), now a real two-step flow: enter your ID + email on
+  file → a 6-digit code is emailed to you (via Gmail SMTP, see
+  `server/.env.example`) → enter the code + new password. The code
+  expires in 10 minutes and is single-use. **Requires one-time setup**
+  (see "Setting up email" below) — without it, this feature returns a
+  clear error instead of crashing, but it can't actually send anything.
 - **New: file attachments on the Submission tab.** Students can now
   attach a PDF, PPT/PPTX, CSV, or DOC/DOCX file (max 10MB) alongside or
   instead of a link. Files live under `server/data/uploads/` — already
   covered by the existing Docker volume, no extra setup needed. Faculty
   can download the attached file from the Review modal or the
   Submissions Hub.
+- **New: only a group's team leader can submit a project** (server
+  enforces this; everyone else still sees the submission's status).
+  Faculty's Submissions Hub now groups entries under a day header,
+  newest day first.
 
 Nothing else about the UI or workflows changed — group creation/joining,
 marks, notifications, etc. all work exactly the same from a user's point
@@ -74,6 +80,28 @@ git pull
 (If you don't have the repo cloned yet: `git clone
 https://github.com/Prathamesh13-n/CBAD-project.git && cd CBAD-project &&
 git checkout backend-migration`)
+
+## Setting up email (for Forgot Password)
+
+This is optional — everything else works without it. Skip it and Forgot
+Password will just return a clear error instead of sending anything.
+
+1. Turn on 2-Step Verification on the Google account you want to send
+   from, if it isn't already: https://myaccount.google.com/security
+2. Generate an App Password (choose "Mail" as the app):
+   https://myaccount.google.com/apppasswords — Google gives you a
+   16-character code. This is NOT your real Gmail password; use the App
+   Password.
+3. **Plain Node**: copy `server/.env.example` to `server/.env` and fill
+   in `GMAIL_USER` (your Gmail address) and `GMAIL_APP_PASSWORD` (the
+   16-character code). `server/.env` is gitignored — never commit it.
+4. **Docker**: pass them as `-e` flags on `docker run` instead of a
+   `.env` file:
+   ```bash
+   docker run -d -p 3000:3000 -v cdad-data:/app/server/data \
+     -e GMAIL_USER=youraddress@gmail.com -e GMAIL_APP_PASSWORD=your16charcode \
+     --name cdad-container cdad
+   ```
 
 ## How to run it
 
@@ -126,9 +154,10 @@ Same as before — by ID, never by email:
 | Faculty | `FAC001`         | `faculty123` |
 | Student | `ADT24SOCB0001`, `ADT24SOCB0002`, `ADT24SOCB0820`, `ADT24SOCB0020` | `PASS123` |
 
-To try the new **Forgot Password** link: on the login page, enter
-`ADT24SOCB0001` + `hanfa@cdad.edu` (the email on file for that student) +
-any new password — it resets immediately, no real email involved.
+To try the new **Forgot Password** link (once email is set up — see
+above): on the login page, enter `ADT24SOCB0001` + `hanfa@cdad.edu` (the
+email on file for that student), check that inbox for the 6-digit code,
+then enter the code + a new password.
 
 ## If something doesn't work
 

@@ -124,29 +124,72 @@
       const prefillId = document.getElementById('loginEmail').value.trim();
       openModal('Reset Your Password', `
         <p class="field-hint" style="margin-bottom:14px;">
-          No email gets sent for this demo — enter your ${idLabel} and the email
-          already on file for your account to verify it's you, then set a new password.
+          Enter your ${idLabel} and the email already on file for your account —
+          we'll email you a 6-digit code to confirm it's you.
         </p>
         <div class="login-error" id="forgotError" style="margin-bottom:10px;"></div>
-        <form id="forgotPasswordForm">
+        <form id="forgotRequestForm">
           <div class="form-grid">
             <div class="field full"><label>${idLabel}</label><input name="id" required placeholder="${idPlaceholder}" value="${escapeHtml(prefillId)}"></div>
             <div class="field full"><label>Email on file</label><input type="email" name="email" required placeholder="you@cdad.edu"></div>
-            <div class="field full"><label>New Password</label><input type="password" name="newPassword" required minlength="4"></div>
-            <div class="field full"><label>Confirm New Password</label><input type="password" name="confirmPassword" required minlength="4"></div>
           </div>
           <div class="form-actions">
             <button type="button" class="btn btn--ghost" id="cancelForgotPassword">Cancel</button>
-            <button type="submit" class="btn btn--primary">Reset Password</button>
+            <button type="submit" class="btn btn--primary">Send Code</button>
           </div>
         </form>
       `, {
         onMount: () => {
           document.getElementById('cancelForgotPassword').addEventListener('click', closeModal);
-          document.getElementById('forgotPasswordForm').addEventListener('submit', async (e) => {
+          document.getElementById('forgotRequestForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const fd = new FormData(e.target);
             const errEl = document.getElementById('forgotError');
+            errEl.classList.remove('show');
+            const submitBtn = e.target.querySelector('button[type=submit]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending...';
+
+            const id = fd.get('id').trim();
+            const email = fd.get('email').trim();
+            const result = await requestPasswordReset(selectedRole, id, email);
+            if (!result.ok) {
+              errEl.textContent = result.error;
+              errEl.classList.add('show');
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Send Code';
+              return;
+            }
+            openConfirmResetModal(id, email);
+          });
+        }
+      });
+    }
+
+    function openConfirmResetModal(id, email) {
+      openModal('Enter the Code We Emailed You', `
+        <p class="field-hint" style="margin-bottom:14px;">
+          A 6-digit code was sent to ${escapeHtml(email)}. Enter it below along with your new password.
+        </p>
+        <div class="login-error" id="confirmResetError" style="margin-bottom:10px;"></div>
+        <form id="confirmResetForm">
+          <div class="form-grid">
+            <div class="field full"><label>6-Digit Code</label><input name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456"></div>
+            <div class="field full"><label>New Password</label><input type="password" name="newPassword" required minlength="4"></div>
+            <div class="field full"><label>Confirm New Password</label><input type="password" name="confirmPassword" required minlength="4"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn--ghost" id="backToRequestReset">Back</button>
+            <button type="submit" class="btn btn--primary">Reset Password</button>
+          </div>
+        </form>
+      `, {
+        onMount: () => {
+          document.getElementById('backToRequestReset').addEventListener('click', openForgotPasswordModal);
+          document.getElementById('confirmResetForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            const errEl = document.getElementById('confirmResetError');
             errEl.classList.remove('show');
 
             const newPassword = fd.get('newPassword');
@@ -156,7 +199,7 @@
               return;
             }
 
-            const result = await resetPassword(selectedRole, fd.get('id').trim(), fd.get('email').trim(), newPassword);
+            const result = await confirmPasswordReset(selectedRole, id, fd.get('code').trim(), newPassword);
             if (!result.ok) {
               errEl.textContent = result.error;
               errEl.classList.add('show');
@@ -164,7 +207,7 @@
             }
             closeModal();
             showToast('Password updated — you can log in now', 'success');
-            document.getElementById('loginEmail').value = fd.get('id').trim();
+            document.getElementById('loginEmail').value = id;
           });
         }
       });

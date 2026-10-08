@@ -22,15 +22,30 @@ async function attemptLogin(role, studentOrFacultyId, password) {
 }
 
 /**
- * Self-service password reset. No email is sent — identity is verified
- * by matching `id` against the email already on file for that account.
+ * Self-service password reset, step 1 of 2: verifies `id` against the
+ * email on file, then emails a 6-digit code to that address.
  * Returns { ok, error } — never throws.
  */
-async function resetPassword(role, id, email, newPassword) {
-  const res = await fetch('/api/auth/forgot-password', {
+async function requestPasswordReset(role, id, email) {
+  const res = await fetch('/api/auth/forgot-password/request', {
     method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role, id, email, newPassword })
+    body: JSON.stringify({ role, id, email })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || 'Could not send the reset email.' };
+  return { ok: true };
+}
+
+/**
+ * Self-service password reset, step 2 of 2: the code emailed in step 1
+ * plus the new password. Returns { ok, error } — never throws.
+ */
+async function confirmPasswordReset(role, id, code, newPassword) {
+  const res = await fetch('/api/auth/forgot-password/confirm', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, id, code, newPassword })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || 'Could not reset password.' };
