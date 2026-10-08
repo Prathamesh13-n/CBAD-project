@@ -110,12 +110,25 @@ router.put('/:id/group', requireRole('faculty'), (req, res) => {
 
 /* ================= Submission workflow ================= */
 
+/** Only the project's group's team leader may submit — runs before
+    upload.single('file') so a rejected non-leader request never writes
+    a file to disk in the first place. */
+function requireTeamLeader(req, res, next) {
+  const row = getRow(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const group = row.group_id ? db.prepare('SELECT team_leader_id FROM student_groups WHERE id = ?').get(row.group_id) : null;
+  if (!group || group.team_leader_id !== req.user.id) {
+    return res.status(403).json({ error: "Only your group's team leader can submit this project." });
+  }
+  next();
+}
+
 /** Submission accepts multipart/form-data: `link`, `note` (both optional)
     plus an optional `file` (PDF/PPT/PPTX/CSV/DOC/DOCX, max 10MB) — see
     server/upload.js. At least one of link or file (new or already on
     record) is required; a resubmission that omits a new file keeps
     whatever file was already attached. */
-router.post('/:id/submission', requireRole('student'), upload.single('file'), (req, res) => {
+router.post('/:id/submission', requireRole('student'), requireTeamLeader, upload.single('file'), (req, res) => {
   const row = getRow(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const { link, note } = req.body || {};

@@ -767,27 +767,45 @@ async function renderSubmissionsHub() {
   const countLabel = document.getElementById('submissionCountLabel');
   if (countLabel) countLabel.textContent = `${submissions.length} submission(s)`;
 
-  host.innerHTML = submissions.length ? submissions.map((p) => {
-    const sub = p.submission;
-    const badgeClass = sub.status === 'Approved' ? 'badge--good' : sub.status === 'Rejected' ? 'badge--bad' : 'badge--warn';
-    return `
-      <tr>
-        <td>
-          <div class="row-name__text"><strong>${escapeHtml(p.title)}</strong><span class="mono">${escapeHtml(p.displayId)}</span></div>
-        </td>
-        <td>${escapeHtml(p.group || '—')}</td>
-        <td>${escapeHtml(sub.submittedBy)}</td>
-        <td>${formatDateTime(sub.submittedAt)}</td>
-        <td><span class="badge ${badgeClass}">${escapeHtml(sub.status)}</span></td>
-        <td class="table-actions">
-          ${sub.link ? `<a class="btn btn--ghost btn--sm" href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">View Link ↗</a>` : ''}
-          ${sub.fileName ? `<a class="btn btn--ghost btn--sm" href="/api/projects/${p.id}/submission/file" target="_blank">Download File ↗</a>` : ''}
-          <button class="btn btn--primary btn--sm" data-review-hub="${p.id}">${sub.status === 'Pending Review' ? 'Review' : 'View / Re-review'}</button>
-        </td>
-      </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="6">No submissions yet.</td></tr>`;
+  // allSubmissions() is already sorted newest-first server-side, so grouping
+  // by calendar day while preserving iteration order keeps days newest-first too.
+  const dayGroups = [];
+  const dayIndex = new Map();
+  submissions.forEach((p) => {
+    const dayKey = new Date(p.submission.submittedAt).toDateString();
+    if (!dayIndex.has(dayKey)) {
+      dayIndex.set(dayKey, dayGroups.length);
+      dayGroups.push({ label: formatDate(p.submission.submittedAt), items: [] });
+    }
+    dayGroups[dayIndex.get(dayKey)].items.push(p);
+  });
+
+  host.innerHTML = submissions.length ? dayGroups.map((g) => `
+    <tr class="day-group-row"><td colspan="6" style="background:var(--bg-soft); font-weight:700; font-size:12.5px; padding:8px 10px;">${escapeHtml(g.label)} <span class="faint" style="font-weight:400;">(${g.items.length})</span></td></tr>
+    ${g.items.map(submissionHubRow).join('')}
+  `).join('') : `<tr class="empty-row"><td colspan="6">No submissions yet.</td></tr>`;
 
   host.querySelectorAll('[data-review-hub]').forEach((b) => b.addEventListener('click', () => openReviewSubmissionModal(b.dataset.reviewHub)));
+}
+
+function submissionHubRow(p) {
+  const sub = p.submission;
+  const badgeClass = sub.status === 'Approved' ? 'badge--good' : sub.status === 'Rejected' ? 'badge--bad' : 'badge--warn';
+  return `
+    <tr>
+      <td>
+        <div class="row-name__text"><strong>${escapeHtml(p.title)}</strong><span class="mono">${escapeHtml(p.displayId)}</span></div>
+      </td>
+      <td>${escapeHtml(p.group || '—')}</td>
+      <td>${escapeHtml(sub.submittedBy)}</td>
+      <td>${formatDateTime(sub.submittedAt)}</td>
+      <td><span class="badge ${badgeClass}">${escapeHtml(sub.status)}</span></td>
+      <td class="table-actions">
+        ${sub.link ? `<a class="btn btn--ghost btn--sm" href="${escapeHtml(sub.link)}" target="_blank" rel="noopener">View Link ↗</a>` : ''}
+        ${sub.fileName ? `<a class="btn btn--ghost btn--sm" href="/api/projects/${p.id}/submission/file" target="_blank">Download File ↗</a>` : ''}
+        <button class="btn btn--primary btn--sm" data-review-hub="${p.id}">${sub.status === 'Pending Review' ? 'Review' : 'View / Re-review'}</button>
+      </td>
+    </tr>`;
 }
 
 function openAddProjectModal() { projectFormModal('Create Project', null); }

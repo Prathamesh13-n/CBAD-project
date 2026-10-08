@@ -788,7 +788,7 @@ async function renderProgressPanel() {
     });
   });
 
-  renderSubmissionBlock(project);
+  renderSubmissionBlock(project, undefined, group.teamLeader === ME.displayId);
 }
 /* ================= Submission tab (dedicated page) ================= */
 async function renderSubmissionTab() {
@@ -809,9 +809,12 @@ async function renderSubmissionTab() {
     <p class="field-hint" style="margin-bottom:18px;">Submit your finished work here for faculty to review. You can update your submission any time until it's approved.</p>
     <div id="submissionTabBlock" style="padding-top:6px;"></div>`;
 
-  renderSubmissionBlock(project, 'submissionTabBlock');
+  renderSubmissionBlock(project, 'submissionTabBlock', group.teamLeader === ME.displayId);
 }
-function renderSubmissionBlock(project, hostId) {
+/** amLeader: only the group's team leader can submit/resubmit (server enforces this
+    too) — everyone else still sees the submission's status/link/file/note, just not
+    the button to change it. */
+function renderSubmissionBlock(project, hostId, amLeader) {
   const host = document.getElementById(hostId || 'submissionBlock');
   if (!host) return;
   const sub = project.submission;
@@ -820,8 +823,11 @@ function renderSubmissionBlock(project, hostId) {
     host.innerHTML = `
       <h4 style="font-size:13.5px; margin-bottom:10px;">Final Submission</h4>
       <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Once your project is ready, submit a link (repository, drive folder, etc.) and/or attach a file (PDF, PPT, CSV, or DOC) for faculty to review.</p>
-      <button class="btn btn--primary btn--sm" data-submit-project-btn>Submit Project</button>`;
-    host.querySelector('[data-submit-project-btn]').addEventListener('click', () => openSubmitProjectModal(project));
+      ${amLeader
+        ? `<button class="btn btn--primary btn--sm" data-submit-project-btn>Submit Project</button>`
+        : `<p class="field-hint">Only your team leader (${escapeHtml(project.teamLeader || 'not set')}) can submit this project.</p>`}`;
+    const submitBtn = host.querySelector('[data-submit-project-btn]');
+    if (submitBtn) submitBtn.addEventListener('click', () => openSubmitProjectModal(project));
     return;
   }
 
@@ -835,7 +841,8 @@ function renderSubmissionBlock(project, hostId) {
       <div class="list-item__body faint">Submitted by ${escapeHtml(sub.submittedBy)} on ${formatDateTime(sub.submittedAt)}</div>
       ${sub.facultyNote ? `<div class="list-item__body"><strong>Faculty note:</strong> ${escapeHtml(sub.facultyNote)}</div>` : ''}
     </div>
-    ${sub.status !== 'Approved' ? `<button class="btn btn--ghost btn--sm" data-resubmit-project-btn>${sub.status === 'Rejected' ? 'Resubmit' : 'Update Submission'}</button>` : ''}`;
+    ${sub.status !== 'Approved' && amLeader ? `<button class="btn btn--ghost btn--sm" data-resubmit-project-btn>${sub.status === 'Rejected' ? 'Resubmit' : 'Update Submission'}</button>` : ''}
+    ${sub.status !== 'Approved' && !amLeader ? `<p class="field-hint">Only your team leader (${escapeHtml(project.teamLeader || sub.submittedBy)}) can update this submission.</p>` : ''}`;
 
   const resubmitBtn = host.querySelector('[data-resubmit-project-btn]');
   if (resubmitBtn) resubmitBtn.addEventListener('click', () => openSubmitProjectModal(project));
