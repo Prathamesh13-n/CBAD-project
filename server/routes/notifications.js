@@ -31,6 +31,9 @@ function notificationsForUser(user) {
       ORDER BY date DESC
     `).all(user.id, student ? student.group_id : null);
   }
+  if (user.type === 'admin') {
+    return db.prepare("SELECT * FROM notifications WHERE recipient_kind = 'all-faculty' ORDER BY date DESC").all();
+  }
   return db.prepare(`
     SELECT * FROM notifications WHERE recipient_kind = 'all-faculty'
       OR (recipient_kind = 'faculty' AND recipient_faculty_id = ?)

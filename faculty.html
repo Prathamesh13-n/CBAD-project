@@ -60,11 +60,13 @@
         <div><h1>Students Overview</h1><div class="topbar__sub">Manage every student record</div></div>
         <div class="topbar__actions">
           <button class="btn btn--ghost" id="importStudentsBtn">Import CSV</button>
+          <button class="btn btn--ghost" id="importSectionBtn" title="Import students of one section / division from a CSV">🏫 Import Section</button>
           <button class="btn btn--danger" id="deleteAllStudentsBtn">Delete All</button>
           <button class="btn btn--primary" id="addStudentBtn">+ Add Student</button>
         </div>
       </div>
       <div class="section">
+        <div class="filter-bar" id="studentSectionTabs" style="gap:8px; flex-wrap:wrap; margin-bottom:10px;"></div>
         <div class="filter-bar">
           <input type="search" id="studentSearch" placeholder="Search students...">
           <select id="studentGroupFilter"></select>
@@ -73,11 +75,12 @@
             <option>Active</option>
             <option>Inactive</option>
           </select>
+          <button class="btn btn--ghost btn--sm" id="assignSectionBtn" title="Put every student currently listed into a section">🏫 Assign Section</button>
           <button class="btn btn--ghost btn--sm" id="exportStudentsBtn">Export</button>
         </div>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Student ID</th><th>Student Name</th><th>Group</th><th>Project</th><th>Progress</th><th>Marks</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th>Student ID</th><th>Student Name</th><th>Section</th><th>Group</th><th>Project</th><th>Progress</th><th>Marks</th><th>Status</th><th>Action</th></tr></thead>
             <tbody id="studentsTableBody"></tbody>
           </table>
         </div>
@@ -105,8 +108,18 @@
 
     <!-- MARKS -->
     <section class="view" id="view-marks">
-      <div class="topbar"><div><h1>Marks</h1><div class="topbar__sub">Enter and manage student evaluations</div></div></div>
+      <div class="topbar">
+        <div><h1>Marks</h1><div class="topbar__sub">Enter and manage student evaluations</div></div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="releaseAllMarksBtn" title="Release all marks to students">📢 Release All Marks</button>
+          <button class="btn btn--primary" id="addGroupMarksBtn">+ Add Group Marks</button>
+        </div>
+      </div>
       <div class="section">
+        <div class="filter-bar">
+          <input type="search" id="marksSearch" placeholder="Search by enrollment no...">
+          <select id="marksSectionFilter"></select>
+        </div>
         <div class="table-wrap">
           <table class="data-table">
             <thead><tr><th>Student</th><th>Internal</th><th>Project</th><th>Presentation</th><th>Viva</th><th>Total</th><th>%</th><th>Grade</th><th>Actions</th></tr></thead>
@@ -151,6 +164,28 @@
           <table class="data-table">
             <thead><tr><th>Project</th><th>Group</th><th>Submitted By</th><th>Submitted On</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="submissionsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section__head"><h3>Exam Submissions</h3><span class="faint" id="examCountLabel" style="font-size:12.5px;"></span></div>
+        <div class="filter-bar" id="examTabs" style="gap:8px;">
+          <button class="btn btn--primary btn--sm" data-exam="TA1">TA1</button>
+          <button class="btn btn--ghost btn--sm" data-exam="TA2">TA2</button>
+          <button class="btn btn--ghost btn--sm" data-exam="EndSem">End Sem</button>
+        </div>
+        <div class="filter-bar" id="examDeadlineBar" style="gap:8px; align-items:center;">
+          <label for="examDeadlineInput" style="font-size:12.5px; font-weight:600;">⏰ Deadline</label>
+          <input type="datetime-local" id="examDeadlineInput">
+          <button class="btn btn--primary btn--sm" id="saveExamDeadlineBtn">Set Deadline</button>
+          <button class="btn btn--ghost btn--sm" id="clearExamDeadlineBtn">Remove</button>
+          <span class="faint" id="examDeadlineStatus" style="font-size:12.5px;"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Group</th><th>Project</th><th>Submitted By</th><th>Submitted On</th><th>Link / File</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody id="examSubmissionsBody"></tbody>
           </table>
         </div>
       </div>
@@ -219,6 +254,7 @@
 <script src="js/groups.js"></script>
 <script src="js/projects.js"></script>
 <script src="js/marks.js"></script>
+  <script src="js/examSubmissions.js"></script>
 <script src="js/presentations.js"></script>
 <script src="js/requests.js"></script>
 <script src="js/notifications.js"></script>

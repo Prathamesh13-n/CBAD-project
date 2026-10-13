@@ -79,7 +79,8 @@ async function currentStudentRecord() {
   return u && u.type === 'student' ? u : null;
 }
 
+/** Faculty record — admins are accepted too, they use the same dashboard. */
 async function currentFacultyRecord() {
   const u = await getCurrentUser();
-  return u && u.type === 'faculty' ? u : null;
+  return u && (u.type === 'faculty' || u.type === 'admin') ? u : null;
 }

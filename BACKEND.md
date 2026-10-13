@@ -172,3 +172,71 @@ then enter the code + a new password.
   crashed on startup — check the fuller error above that line.
 - Full details on the database schema and API routes are in the updated
   `README.md`.
+
+## Backend reference for contributors
+
+Stack: Node 22+/Express, SQLite via `node:sqlite`, bcrypt, cookie sessions,
+multer for uploads. Entry point `server/index.js` mounts one router per
+resource under `/api/*` and serves the static frontend from the project root.
+
+### Roles and sessions
+- Three roles: `student`, `faculty`, `admin`. Login is `POST /api/auth/login`
+  with `{ role, id, password }`; the server sets an HttpOnly `cdad_sid` cookie.
+  Sessions live **in memory** (a restart logs everyone out).
+- `requireRole(role)` in `server/sessions.js` guards routes.
+  `requireRole()` = any logged-in user, `requireRole('faculty')` = faculty **or
+  admin**, `requireRole('admin')` = admin only, `requireRole('student')` = students.
+- Handlers that branch on the caller treat admin like faculty
+  (`req.user.type === 'faculty' || 'admin'`).
+- The default admin (`ADMIN001` / `admin123`) is created in `db.js` when the
+  `admins` table is empty. Change it.
+
+### Schema changes (all additive, applied on startup)
+`db.js` uses `CREATE TABLE IF NOT EXISTS` plus `ensureColumn()`, so an existing
+database upgrades in place — no reset needed.
+- `students.section` — division (A/B/…).
+- `marks.released` — 0/1; when the column is first added, existing rows are set
+  to released so nobody loses access.
+- `exam_submissions` (one row per group per exam, unique on `group_id, exam`),
+  `exam_submission_files` (up to 5 per submission; legacy single-file rows are
+  migrated automatically), `exam_deadlines` (one optional deadline per exam).
+- `admins`.
+
+### Endpoints added in this branch
+| Method & path | Who | What |
+|---|---|---|
+| `PUT /api/marks/group/:groupId` | faculty/admin | Apply marks to every member of a group; only fields sent are overwritten; new marks start **unreleased** |
+| `POST /api/marks/release-all` | faculty/admin | `{released: true or false}` for every marks row |
+| `POST /api/marks/:id/release` | faculty/admin | Release/withdraw one student's marks |
+| `GET /api/marks` | any | Faculty/admin: everything. **Students: only released marks of their own group** |
+| `GET /api/exam-submissions` | any | `{exams, deadlines, submissions}` — faculty/admin see all, students their group's |
+| `POST /api/exam-submissions/:exam` | student (team leader) | multipart: `link`, `note`, `files` (≤5), `removeFileIds` (JSON array). Rejected after the exam's deadline |
+| `GET /api/exam-submissions/files/:fileId[?inline=1]` | faculty/admin, own-group students | Download; `inline=1` serves pdf/csv/docx for in-browser preview |
+| `PUT /api/exam-submissions/deadlines/:exam` | faculty/admin | `{deadline: ISO}` sets, empty clears; notifies students |
+| `DELETE /api/exam-submissions/:id` | faculty/admin | Remove a submission and its files |
+| `GET /api/admin/overview` | admin | Counts |
+| `GET/POST/PUT/DELETE /api/admin/students[/:id]` | admin | Student account CRUD |
+| `POST /api/admin/students/import` | admin | `{students:[…]}` bulk add; existing IDs skipped and reported |
+| `GET/POST/PUT/DELETE /api/admin/faculty[/:id]` | admin | Faculty account CRUD |
+| `PUT /api/students/:id` | faculty/admin | Now also accepts `section` |
+| `DELETE /api/students` | faculty/admin | Delete all students (detaches `submissions.submitted_by_id` first, otherwise a foreign key blocks it) |
+
+Exam names are fixed in `routes/examSubmissions.js` (`EXAMS = ['TA1','TA2','EndSem']`).
+Uploads are stored in `server/data/uploads/` (allowed types/size in `upload.js`).
+
+### Rules the server enforces (don't rely on the UI)
+- Deadline and team-leader checks run in middleware **before** multer, so a
+  rejected request never writes a file to disk.
+- Students never receive unreleased marks, or marks from other groups.
+- File downloads check group membership for students.
+
+### Frontend map
+`js/examSubmissions.js` (API helpers + preview modal), `js/marks.js` (marks API
+helpers), `js/admin.js` + `admin.html` (admin panel). Faculty UI lives in
+`js/faculty.js`, student UI in `js/student.js`; the faculty dashboard also
+loads for admins (`currentFacultyRecord()` accepts both roles).
+
+### Running a safe test
+Copy the project folder, start the copy on another port
+(`PORT=3200 node server/index.js`) and test against that — the SQLite file in
+`server/data/` is the live data. Back it up (`cdad.db*`) before destructive actions.

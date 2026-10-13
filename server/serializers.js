@@ -56,7 +56,7 @@ function serializeStudent(row) {
   if (!row) return null;
   return {
     id: row.id, displayId: row.display_id, name: row.name, email: row.email,
-    phone: row.phone, course: row.course, year: row.year, department: row.department,
+    phone: row.phone, course: row.course, year: row.year, department: row.department, section: row.section || '',
     group: groupDisplayId(row.group_id), role: row.role, status: row.status, avatar: row.avatar,
     connections: connectionsOf(row.id)
   };
@@ -104,7 +104,7 @@ function serializeMarks(row) {
     internal: row.internal, internalMax: row.internal_max,
     project: row.project, projectMax: row.project_max,
     presentation: row.presentation, presentationMax: row.presentation_max,
-    viva: row.viva, vivaMax: row.viva_max
+    viva: row.viva, vivaMax: row.viva_max, released: !!row.released
   };
 }
 

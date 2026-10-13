@@ -6,10 +6,13 @@
 let FAC = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const user = await requireRole('faculty');
-  if (!user) return;
   FAC = await currentFacultyRecord();
-  if (!FAC) { logout(); return; }
+  if (!FAC) { window.location.href = 'index.html'; return; }
+  if (FAC.type === 'admin') {
+    // Admins use this dashboard with full faculty access, plus a way back to their panel.
+    const nav = document.querySelector('.sidebar .nav-link');
+    nav.insertAdjacentHTML('beforebegin', '<a class="nav-link" href="admin.html" style="text-decoration:none;"><span class="nav-link__icon">⚙</span> Admin Panel</a>');
+  }
 
   wireSidebarNav();
   wireLogout();
@@ -51,13 +54,18 @@ function showView(name) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+let studentSectionTab = '__all'; // '__all' | '' (no section) | section name
 let studentsPage = 1;
 const STUDENTS_PAGE_SIZE = 5;
 
 function wireStaticButtons() {
   const map = {
     addStudentBtn: openAddStudentModal,
-    importStudentsBtn: openImportStudentsModal,
+    addGroupMarksBtn: openGroupMarksModal,
+    releaseAllMarksBtn: confirmReleaseAllMarks,
+    importStudentsBtn: () => openImportStudentsModal(),
+    assignSectionBtn: openAssignSectionModal,
+    importSectionBtn: () => openImportStudentsModal({ bySection: true }),
     deleteAllStudentsBtn: confirmDeleteAllStudents,
     addGroupBtn: openAddGroupModal,
     addProjectBtn: openAddProjectModal,
@@ -118,6 +126,7 @@ async function renderAll() {
   await renderMarksTable();
   await renderPresentations();
   await renderSubmissionsHub();
+  await renderExamSubmissions();
   await renderRequests();
   await renderNotifications();
   await renderAnnouncements();
@@ -209,6 +218,26 @@ async function renderStudents() {
   const statusFilter = document.getElementById('studentStatusFilter')?.value || '';
 
   let students = await getData(CDAD_KEYS.STUDENTS);
+
+  // Section tabs: All | one per section | No Section, each with a count.
+  const sectionNames = [...new Set(students.map((s) => s.section || '').filter(Boolean))].sort();
+  const noSectionCount = students.filter((s) => !s.section).length;
+  if (studentSectionTab !== '__all' && studentSectionTab !== '' && !sectionNames.includes(studentSectionTab)) studentSectionTab = '__all';
+  const tabsEl = document.getElementById('studentSectionTabs');
+  if (tabsEl) {
+    const tab = (value, label, count) =>
+      `<button class="btn btn--sm ${studentSectionTab === value ? 'btn--primary' : 'btn--ghost'}" data-section-tab="${escapeHtml(value)}">${escapeHtml(label)} <span style="opacity:.7;">(${count})</span></button>`;
+    tabsEl.innerHTML = tab('__all', 'All Sections', students.length)
+      + sectionNames.map((n) => tab(n, 'Section ' + n, students.filter((s) => s.section === n).length)).join('')
+      + (noSectionCount && sectionNames.length ? tab('', 'No Section', noSectionCount) : '');
+    tabsEl.querySelectorAll('[data-section-tab]').forEach((b) => b.addEventListener('click', () => {
+      studentSectionTab = b.dataset.sectionTab;
+      studentsPage = 1;
+      renderStudents();
+    }));
+  }
+  if (studentSectionTab !== '__all') students = students.filter((s) => (s.section || '') === studentSectionTab);
+
   if (search) students = students.filter((s) => (s.name + s.email + s.displayId).toLowerCase().includes(search));
   if (groupFilter) students = students.filter((s) => s.group === groupFilter);
   if (statusFilter) students = students.filter((s) => s.status === statusFilter);
@@ -234,6 +263,7 @@ async function renderStudents() {
           <div class="row-name__text"><strong>${escapeHtml(s.name)}</strong><span>${escapeHtml(s.email)}</span></div>
         </div>
       </td>
+      <td>${s.section ? `<span class="badge badge--info">${escapeHtml(s.section)}</span>` : '—'}</td>
       <td>${escapeHtml(s.group || '—')}</td>
       <td>${project ? escapeHtml(project.title) : '—'}</td>
       <td>
@@ -249,7 +279,7 @@ async function renderStudents() {
         <button class="btn btn--danger btn--sm" data-del-student="${s.id}">Delete</button>
       </td>
     </tr>`;
-  }).join('') : `<tr class="empty-row"><td colspan="8">No students match your filters.</td></tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="9">No students match your filters.</td></tr>`;
 
   host.querySelectorAll('[data-edit-student]').forEach((b) => b.addEventListener('click', () => openEditStudentModal(b.dataset.editStudent)));
   host.querySelectorAll('[data-del-student]').forEach((b) => b.addEventListener('click', async () => {
@@ -266,6 +296,47 @@ async function renderStudents() {
   }));
 
   renderStudentsPagination(students.length, totalPages);
+}
+
+async function currentFilteredStudents() {
+  const search = (document.getElementById('studentSearch')?.value || '').toLowerCase();
+  const groupFilter = document.getElementById('studentGroupFilter')?.value || '';
+  const statusFilter = document.getElementById('studentStatusFilter')?.value || '';
+  let students = await getData(CDAD_KEYS.STUDENTS);
+  if (studentSectionTab !== '__all') students = students.filter((s) => (s.section || '') === studentSectionTab);
+  if (search) students = students.filter((s) => (s.name + s.email + s.displayId).toLowerCase().includes(search));
+  if (groupFilter) students = students.filter((s) => s.group === groupFilter);
+  if (statusFilter) students = students.filter((s) => s.status === statusFilter);
+  return students;
+}
+
+async function openAssignSectionModal() {
+  const list = await currentFilteredStudents();
+  if (!list.length) return showToast('No students in the current list', 'info');
+  const existing = [...new Set((await getData(CDAD_KEYS.STUDENTS)).map((s) => s.section).filter(Boolean))].sort();
+  openModal('Assign Section', `
+    <p class="field-hint" style="margin-bottom:14px;">All <strong>${list.length}</strong> student(s) currently listed (respecting the tab, search and filters) will be placed in the section below. Leave it blank to remove their section.</p>
+    <div class="field full" style="margin-bottom:14px;">
+      <label>Section / Division</label>
+      <input id="assignSectionInput" list="assignSectionList" placeholder="e.g. A" autocomplete="off">
+      <datalist id="assignSectionList">${existing.map((v) => `<option value="${escapeHtml(v)}">`).join('')}</datalist>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn btn--ghost" id="cancelAssignSection">Cancel</button>
+      <button type="button" class="btn btn--primary" id="confirmAssignSection">Assign</button>
+    </div>`, {
+    onMount: () => {
+      document.getElementById('cancelAssignSection').addEventListener('click', closeModal);
+      document.getElementById('confirmAssignSection').addEventListener('click', async () => {
+        const section = document.getElementById('assignSectionInput').value.trim();
+        closeModal();
+        for (const s of list) await updateData(CDAD_KEYS.STUDENTS, s.id, { section });
+        if (section) studentSectionTab = section;
+        showToast(section ? `${list.length} student(s) moved to section ${section}` : `Section cleared for ${list.length} student(s)`, 'success');
+        await renderAll();
+      });
+    }
+  });
 }
 
 function renderStudentsPagination(total, totalPages) {
@@ -339,9 +410,17 @@ function findColumn(headers, aliases) {
   return -1;
 }
 
-function openImportStudentsModal() {
-  openModal('Import Students from CSV', `
-    <p class="field-hint" style="margin-bottom:14px;">Upload a CSV with columns for Enrollment No. and Name (matches the roster template — Email, Phone, Group, and Password columns are optional). Existing Student IDs are skipped, not overwritten.</p>
+function openImportStudentsModal(opts) {
+  const bySection = !!(opts && opts.bySection);
+  openModal(bySection ? 'Import Students by Section' : 'Import Students from CSV', `
+    ${bySection ? `
+    <p class="field-hint" style="margin-bottom:14px;">Choose the section / division, then upload its CSV. Imported students are placed in that section, and students who already exist are moved into it. If the CSV has a "Section" column, only rows for the chosen section are imported.</p>
+    <div class="field full" style="margin-bottom:14px;">
+      <label>Section / Division</label>
+      <input id="importSection" list="importSectionList" placeholder="e.g. A" autocomplete="off">
+      <datalist id="importSectionList"></datalist>
+    </div>` : `
+    <p class="field-hint" style="margin-bottom:14px;">Upload a CSV with columns for Enrollment No. and Name (matches the roster template — Email, Phone, Group, Section, and Password columns are optional). Existing Student IDs are skipped, not overwritten.</p>`}
     <div class="field full" style="margin-bottom:14px;">
       <label>CSV File</label>
       <input type="file" id="csvFileInput" accept=".csv,text/csv">
@@ -354,7 +433,22 @@ function openImportStudentsModal() {
   `, {
     onMount: () => {
       let parsedRows = [];
+      let sectionUpdates = []; // existing students to move into the chosen section
+      const sectionEl = document.getElementById('importSection');
+      const chosenSection = () => (sectionEl ? sectionEl.value.trim() : '');
       document.getElementById('cancelImport').addEventListener('click', closeModal);
+      if (sectionEl) {
+        getData(CDAD_KEYS.STUDENTS).then((all) => {
+          document.getElementById('importSectionList').innerHTML = [...new Set(all.map((s) => s.section).filter(Boolean))]
+            .map((v) => `<option value="${escapeHtml(v)}">`).join('');
+        });
+        // Changing the section after choosing a file re-runs the preview with the new filter.
+        sectionEl.addEventListener('input', () => {
+          const fi = document.getElementById('csvFileInput');
+          if (fi.files[0]) fi.dispatchEvent(new Event('change'));
+          else document.getElementById('confirmImportBtn').disabled = true;
+        });
+      }
 
       document.getElementById('csvFileInput').addEventListener('change', async (e) => {
         const file = e.target.files[0];
@@ -372,6 +466,7 @@ function openImportStudentsModal() {
           const emailCol = findColumn(headers, ['EMAIL (optional)', 'EMAIL']);
           const phoneCol = findColumn(headers, ['PHONE (optional)', 'PHONE', 'PHONE NUMBER']);
           const groupCol = findColumn(headers, ['GROUP (optional)', 'GROUP']);
+          const sectionCol = findColumn(headers, ['SECTION (optional)', 'SECTION', 'DIVISION', 'DIV']);
           const passCol = findColumn(headers, ['PASSWORD (optional)', 'PASSWORD']);
 
           if (idCol === -1 || nameCol === -1) {
@@ -380,7 +475,8 @@ function openImportStudentsModal() {
             return;
           }
 
-          const existingIds = new Set((await getData(CDAD_KEYS.STUDENTS)).map((s) => s.displayId.toLowerCase()));
+          const existingStudents = await getData(CDAD_KEYS.STUDENTS);
+          const existingIds = new Set(existingStudents.map((s) => s.displayId.toLowerCase()));
           const dataRows = rows.slice(1);
           const totalDataRows = dataRows.length;
 
@@ -395,28 +491,45 @@ function openImportStudentsModal() {
               email: emailCol !== -1 ? (r[emailCol] || '').trim() : '',
               phone: phoneCol !== -1 ? (r[phoneCol] || '').trim() : '',
               group: groupCol !== -1 ? (r[groupCol] || '').trim() : '',
+              section: sectionCol !== -1 ? (r[sectionCol] || '').trim() : '',
               password: passCol !== -1 ? (r[passCol] || '').trim() : ''
             };
           });
 
-          const validRows = rawParsed.filter((r) => r.displayId && r.name);
+          const sec = chosenSection();
+          let validRows = rawParsed.filter((r) => r.displayId && r.name);
+          let otherSection = 0;
+          if (bySection) {
+            // A Section column narrows the file to the chosen division; blank cells are taken as belonging to it.
+            const mine = validRows.filter((r) => !r.section || r.section.toLowerCase() === sec.toLowerCase());
+            otherSection = validRows.length - mine.length;
+            validRows = mine;
+          }
           const duplicateRows = validRows.filter((r) => existingIds.has(r.displayId.toLowerCase()));
           parsedRows = validRows.filter((r) => !existingIds.has(r.displayId.toLowerCase()));
+          sectionUpdates = bySection
+            ? duplicateRows.map((r) => existingStudents.find((s) => s.displayId.toLowerCase() === r.displayId.toLowerCase()))
+                .filter((s) => s && (s.section || '') !== sec)
+            : [];
 
           document.getElementById('importPreview').innerHTML = `
             <div class="list-item">
               <div class="list-item__body"><strong>${totalDataRows}</strong> data row(s) found in the file.</div>
               <div class="list-item__body"><strong>${parsedRows.length}</strong> will be imported.</div>
               ${invalidRows.length ? `<div class="list-item__body" style="color:var(--red);">${invalidRows.length} row(s) skipped — missing Enrollment No. or Name (line ${invalidRows.slice(0, 8).map((r) => r.line).join(', ')}${invalidRows.length > 8 ? ', …' : ''}).</div>` : ''}
-              ${duplicateRows.length ? `<div class="list-item__body" style="color:var(--orange);">${duplicateRows.length} row(s) skipped — Student ID already exists (${duplicateRows.slice(0, 8).map((r) => escapeHtml(r.displayId)).join(', ')}${duplicateRows.length > 8 ? ', …' : ''}).</div>` : ''}
+              ${bySection ? `<div class="list-item__body"><strong>${sectionUpdates.length}</strong> existing student(s) will be moved to section ${escapeHtml(sec || '—')}.</div>` : ''}
+              ${otherSection ? `<div class="list-item__body faint">${otherSection} row(s) ignored — they belong to other sections.</div>` : ''}
+              ${!bySection && duplicateRows.length ? `<div class="list-item__body" style="color:var(--orange);">${duplicateRows.length} row(s) skipped — Student ID already exists (${duplicateRows.slice(0, 8).map((r) => escapeHtml(r.displayId)).join(', ')}${duplicateRows.length > 8 ? ', …' : ''}).</div>` : ''}
               <div class="list-item__body faint">First row to import: ${parsedRows[0] ? escapeHtml(parsedRows[0].displayId) + ' — ' + escapeHtml(parsedRows[0].name) : '—'}</div>
             </div>`;
-          document.getElementById('confirmImportBtn').disabled = parsedRows.length === 0;
+          document.getElementById('confirmImportBtn').disabled = (parsedRows.length === 0 && sectionUpdates.length === 0) || (bySection && !sec);
         };
         reader.readAsText(file);
       });
 
       document.getElementById('confirmImportBtn').addEventListener('click', async () => {
+        const sec = chosenSection();
+        if (bySection && !sec) { showToast('Enter a section first', 'error'); return; }
         const existingIds = new Set((await getData(CDAD_KEYS.STUDENTS)).map((s) => s.displayId.toLowerCase()));
         let imported = 0;
         for (const r of parsedRows) {
@@ -427,7 +540,7 @@ function openImportStudentsModal() {
             email: r.email || '',
             password: r.password || 'PASS123',
             phone: r.phone || '',
-            course: '', year: '', department: '',
+            course: '', year: '', department: '', section: bySection ? sec : r.section || '',
             group: r.group || '',
             role: 'Member',
             status: 'Active',
@@ -437,8 +550,11 @@ function openImportStudentsModal() {
           existingIds.add(r.displayId.toLowerCase());
           imported++;
         }
+        for (const s of sectionUpdates) await updateData(CDAD_KEYS.STUDENTS, s.id, { section: sec });
         closeModal();
-        showToast(`Imported ${imported} student(s)`, 'success');
+        showToast(bySection
+          ? `Section ${sec}: ${imported} imported, ${sectionUpdates.length} moved in`
+          : `Imported ${imported} student(s)`, 'success');
         await renderAll();
       });
     }
@@ -462,6 +578,7 @@ function studentFormModal(title, student) {
           </div>
           <div class="field"><label>Year</label><input name="year" value="${escapeHtml(student?.year || '1st Year')}"></div>
           <div class="field"><label>Department</label><input name="department" value="${escapeHtml(student?.department || 'Computer Engineering')}"></div>
+          <div class="field"><label>Section</label><input name="section" placeholder="e.g. A" value="${escapeHtml(student?.section || '')}"></div>
           <div class="field">
             <label>Group</label>
             <select name="group">
@@ -493,7 +610,7 @@ function studentFormModal(title, student) {
           const fields = {
             name: fd.get('name').trim(), email: fd.get('email').trim(),
             phone: fd.get('phone').trim(), course: fd.get('course'), year: fd.get('year').trim(),
-            department: fd.get('department').trim(), group: fd.get('group'), role: fd.get('role'),
+            department: fd.get('department').trim(), section: fd.get('section').trim(), group: fd.get('group'), role: fd.get('role'),
             status: fd.get('status'), avatar: fd.get('avatar').trim()
           };
           const password = fd.get('password');
@@ -788,6 +905,81 @@ async function renderSubmissionsHub() {
   host.querySelectorAll('[data-review-hub]').forEach((b) => b.addEventListener('click', () => openReviewSubmissionModal(b.dataset.reviewHub)));
 }
 
+/* ----- Exam submissions (TA1 / TA2 / EndSem) ----- */
+let currentExam = 'TA1';
+
+async function renderExamSubmissions() {
+  const host = document.getElementById('examSubmissionsBody');
+  if (!host) return;
+  const tabs = document.getElementById('examTabs');
+  if (!tabs.dataset.wired) {
+    tabs.dataset.wired = '1';
+    tabs.querySelectorAll('[data-exam]').forEach((b) => b.addEventListener('click', () => { currentExam = b.dataset.exam; renderExamSubmissions(); }));
+  }
+  tabs.querySelectorAll('[data-exam]').forEach((b) => {
+    b.className = 'btn btn--sm ' + (b.dataset.exam === currentExam ? 'btn--primary' : 'btn--ghost');
+  });
+
+  const [{ submissions, deadlines }, groups, projects] = await Promise.all([
+    fetchExamSubmissions(), getData(CDAD_KEYS.GROUPS), getData(CDAD_KEYS.PROJECTS)
+  ]);
+
+  // Deadline bar for the selected exam.
+  const dlInput = document.getElementById('examDeadlineInput');
+  const dlStatus = document.getElementById('examDeadlineStatus');
+  const dl = deadlines[currentExam];
+  if (document.activeElement !== dlInput) dlInput.value = isoToLocalInput(dl);
+  dlStatus.textContent = dl
+    ? (new Date(dl) < new Date() ? '🔒 Closed — students can no longer submit' : `Open until ${formatDateTime(dl)}`)
+    : 'No deadline — students can always submit';
+  if (!dlInput.dataset.wired) {
+    dlInput.dataset.wired = '1';
+    document.getElementById('saveExamDeadlineBtn').addEventListener('click', async () => {
+      if (!dlInput.value) { showToast('Pick a date and time first', 'error'); return; }
+      await setExamDeadline(currentExam, new Date(dlInput.value).toISOString());
+      showToast(`${EXAM_LABELS[currentExam]} deadline set`, 'success');
+      await renderExamSubmissions();
+    });
+    document.getElementById('clearExamDeadlineBtn').addEventListener('click', async () => {
+      await setExamDeadline(currentExam, '');
+      dlInput.value = '';
+      showToast(`${EXAM_LABELS[currentExam]} deadline removed`, 'info');
+      await renderExamSubmissions();
+    });
+  }
+  const forExam = submissions.filter((s) => s.exam === currentExam);
+  const byGroup = new Map(forExam.map((s) => [s.group, s]));
+  const rows = groups.filter((g) => (g.members || []).length || byGroup.has(g.displayId));
+  document.getElementById('examCountLabel').textContent = `${EXAM_LABELS[currentExam]}: ${forExam.length} of ${rows.length} groups submitted`;
+
+  host.innerHTML = rows.length ? rows.map((g) => {
+    const s = byGroup.get(g.displayId);
+    const project = projects.find((p) => p.group === g.displayId);
+    const head = `<td><div class="row-name__text"><strong>${escapeHtml(g.name)}</strong><span class="mono">${escapeHtml(g.displayId)}</span></div></td>
+      <td>${escapeHtml(project ? project.title : '—')}</td>`;
+    if (!s) return `<tr>${head}<td colspan="4"><span class="badge badge--warn">Not submitted</span></td><td></td></tr>`;
+    return `<tr>${head}
+      <td>${escapeHtml(s.submittedByName || s.submittedBy)}<div class="faint mono" style="font-size:11px;">${escapeHtml(s.submittedBy)}</div></td>
+      <td>${formatDateTime(s.submittedAt)}</td>
+      <td class="table-actions">
+        ${s.link ? `<a class="btn btn--ghost btn--sm" href="${escapeHtml(s.link)}" target="_blank" rel="noopener">Open Link ↗</a>` : ''}
+        ${s.files.map((f) => `<span class="exam-file" style="display:inline-flex; gap:2px;">${canPreviewExamFile(f) ? `<button class="btn btn--primary btn--sm" data-view-exam-file="${escapeHtml(JSON.stringify(f))}" title="View ${escapeHtml(f.name)} without downloading">👁 ${escapeHtml(f.name.length > 18 ? f.name.slice(0, 16) + '…' : f.name)}</button>` : ''}<a class="btn btn--ghost btn--sm" href="/api/exam-submissions/files/${f.id}" target="_blank" title="Download ${escapeHtml(f.name)}">${canPreviewExamFile(f) ? '↓' : escapeHtml(f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name) + ' ↓'}</a></span>`).join('')}
+      </td>
+      <td>${escapeHtml(s.note || '—')}</td>
+      <td class="table-actions"><button class="btn btn--danger btn--sm" data-del-exam-sub="${s.id}">Remove</button></td>
+    </tr>`;
+  }).join('') : `<tr class="empty-row"><td colspan="7">No groups yet.</td></tr>`;
+
+  host.querySelectorAll('[data-view-exam-file]').forEach((b) => b.addEventListener('click', () => openExamFilePreview(JSON.parse(b.dataset.viewExamFile))));
+  host.querySelectorAll('[data-del-exam-sub]').forEach((b) => b.addEventListener('click', () => {
+    confirmDelete(`Remove this ${EXAM_LABELS[currentExam]} submission?`, async () => {
+      await deleteExamSubmission(b.dataset.delExamSub);
+      showToast('Submission removed', 'success');
+      await renderExamSubmissions();
+    });
+  }));
+}
+
 function submissionHubRow(p) {
   const sub = p.submission;
   const badgeClass = sub.status === 'Approved' ? 'badge--good' : sub.status === 'Rejected' ? 'badge--bad' : 'badge--warn';
@@ -902,7 +1094,23 @@ async function renderMarksTable() {
   if (!host) return;
   const students = await getData(CDAD_KEYS.STUDENTS);
   const marks = await allMarks();
-  host.innerHTML = students.length ? students.map((s) => {
+
+  // Section filter: rebuild options, keeping the current selection if it still exists.
+  const filter = document.getElementById('marksSectionFilter');
+  const sections = [...new Set(students.map((s) => s.section || ''))].sort((a, b) => (a || '￿').localeCompare(b || '￿'));
+  const current = filter.value || '__all';
+  filter.innerHTML = '<option value="__all">All Sections</option>' +
+    sections.map((sec) => `<option value="${escapeHtml(sec)}">${sec ? 'Section ' + escapeHtml(sec) : 'No Section'}</option>`).join('');
+  filter.value = [...filter.options].some((o) => o.value === current) ? current : '__all';
+  filter.onchange = renderMarksTable;
+  const searchEl = document.getElementById('marksSearch');
+  if (!searchEl.dataset.wired) {
+    searchEl.dataset.wired = '1';
+    searchEl.addEventListener('input', renderMarksTable);
+  }
+  const query = searchEl.value.trim().toLowerCase();
+
+  const studentRow = (s) => {
     const m = marks.find((x) => x.studentId === s.displayId);
     const t = m ? deriveMarkTotals(m) : null;
     return `
@@ -916,12 +1124,29 @@ async function renderMarksTable() {
         <td>${t ? t.percentage + '%' : '—'}</td>
         <td>${t ? `<span class="badge badge--info">${t.grade}</span>` : '—'}</td>
         <td class="table-actions">
+          ${m ? `<button class="btn btn--ghost btn--sm" data-release-marks="${m.id}" data-released="${m.released ? 1 : 0}" title="${m.released ? 'Released — click to withdraw' : 'Hidden from student — click to release'}">${m.released ? '🔓' : '🔒'}</button>` : ''}
           <button class="btn btn--ghost btn--sm" data-edit-marks="${s.displayId}">Edit ✎</button>
           ${m ? `<button class="btn btn--ghost btn--sm" data-reset-marks="${m.id}">Reset</button><button class="btn btn--danger btn--sm" data-del-marks="${m.id}">Delete</button>` : ''}
         </td>
       </tr>`;
+  };
+
+  const matches = (s) => !query || s.displayId.toLowerCase().includes(query);
+  const shown = sections.filter((sec) => (filter.value === '__all' || sec === filter.value) && students.some((s) => (s.section || '') === sec && matches(s)));
+  host.innerHTML = !shown.length && query ? `<tr class="empty-row"><td colspan="9">No student matches "${escapeHtml(searchEl.value.trim())}".</td></tr>` : students.length ? shown.map((sec) => {
+    const rows = students.filter((s) => (s.section || '') === sec && matches(s));
+    const withMarks = rows.map((s) => marks.find((x) => x.studentId === s.displayId)).filter(Boolean);
+    const avg = withMarks.length ? Math.round(withMarks.reduce((a, m) => a + deriveMarkTotals(m).percentage, 0) / withMarks.length * 100) / 100 : null;
+    return `<tr class="section-row"><td colspan="9"><strong>${sec ? 'Section ' + escapeHtml(sec) : 'No Section'}</strong>
+      <span class="faint"> · ${rows.length} student${rows.length === 1 ? '' : 's'}${avg !== null ? ' · avg ' + avg + '%' : ''}</span></td></tr>` + rows.map(studentRow).join('');
   }).join('') : `<tr class="empty-row"><td colspan="9">No students yet.</td></tr>`;
 
+  host.querySelectorAll('[data-release-marks]').forEach((b) => b.addEventListener('click', async () => {
+    const next = b.dataset.released !== '1';
+    await setMarksReleased(b.dataset.releaseMarks, next);
+    showToast(next ? 'Marks released to student' : 'Marks hidden from student', 'info');
+    await renderMarksTable();
+  }));
   host.querySelectorAll('[data-edit-marks]').forEach((b) => b.addEventListener('click', () => openMarksModal(b.dataset.editMarks)));
   host.querySelectorAll('[data-reset-marks]').forEach((b) => b.addEventListener('click', () => {
     confirmDelete('Reset all marks for this student to zero?', async () => { await resetMarks(b.dataset.resetMarks); showToast('Marks reset', 'info'); await renderAll(); });
@@ -929,6 +1154,70 @@ async function renderMarksTable() {
   host.querySelectorAll('[data-del-marks]').forEach((b) => b.addEventListener('click', () => {
     confirmDelete("Delete this student's marks record?", async () => { await deleteMarks(b.dataset.delMarks); showToast('Marks deleted', 'success'); await renderAll(); });
   }));
+}
+
+function confirmReleaseAllMarks() {
+  openModal('Release All Marks', `
+    <p class="confirm-text">Release marks for all students? Every student with a marks record will be able to see their own marks and their group's marks.</p>
+    <p class="faint" style="font-size:12.5px;">You can hide individual students again with the lock icon in the table.</p>
+    <div class="form-actions">
+      <button class="btn btn--ghost" id="relCancelBtn" type="button">Cancel</button>
+      <button class="btn btn--primary" id="relOkBtn" type="button">📢 Release All</button>
+    </div>
+  `, {
+    onMount: () => {
+      document.getElementById('relCancelBtn').addEventListener('click', closeModal);
+      document.getElementById('relOkBtn').addEventListener('click', async () => {
+        closeModal();
+        const r = await releaseAllMarks(true);
+        if (r) showToast(`Marks released for ${r.updated} student${r.updated === 1 ? '' : 's'}`, 'success');
+        else showToast('Could not release marks', 'error');
+        await renderAll();
+      });
+    }
+  });
+}
+
+async function openGroupMarksModal() {
+  const groups = await getData(CDAD_KEYS.GROUPS);
+  const withMembers = groups.filter((g) => (g.members || []).length);
+  if (!withMembers.length) return showToast('No groups with members yet', 'info');
+  const d = { internalMax: 20, projectMax: 40, presentationMax: 20, vivaMax: 10 };
+  openModal('Add Group Marks', `
+    <form id="groupMarksForm">
+      <div class="form-grid">
+        <div class="field full"><label>Group</label>
+          <select name="group" required>
+            ${withMembers.map((g) => `<option value="${g.displayId}">${g.displayId} — ${escapeHtml(g.name)} (${g.members.length} members)</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Internal (/${d.internalMax})</label><input type="number" name="internal" min="0" max="${d.internalMax}" placeholder="leave blank to skip"></div>
+        <div class="field"><label>Project (/${d.projectMax})</label><input type="number" name="project" min="0" max="${d.projectMax}" placeholder="leave blank to skip"></div>
+        <div class="field"><label>Presentation (/${d.presentationMax})</label><input type="number" name="presentation" min="0" max="${d.presentationMax}" placeholder="leave blank to skip"></div>
+        <div class="field"><label>Viva (/${d.vivaMax})</label><input type="number" name="viva" min="0" max="${d.vivaMax}" placeholder="leave blank to skip"></div>
+      </div>
+      <p class="faint" style="font-size:12.5px;">Applied to every member of the group. Blank fields keep each member's existing mark. You can still edit individuals afterwards.</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="cancelGroupMarksForm">Cancel</button>
+        <button type="submit" class="btn btn--primary">Apply to Group</button>
+      </div>
+    </form>
+  `, {
+    onMount: () => {
+      document.getElementById('cancelGroupMarksForm').addEventListener('click', closeModal);
+      document.getElementById('groupMarksForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const fields = {};
+        ['internal', 'project', 'presentation', 'viva'].forEach((k) => { if (fd.get(k) !== '') fields[k] = Number(fd.get(k)); });
+        const r = await upsertGroupMarks(fd.get('group'), fields);
+        closeModal();
+        if (r) showToast(`Marks applied to ${r.updated} member${r.updated === 1 ? '' : 's'}`, 'success');
+        else showToast('Could not apply group marks', 'error');
+        await renderAll();
+      });
+    }
+  });
 }
 
 async function openMarksModal(studentDisplayId) {

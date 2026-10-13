@@ -26,7 +26,9 @@ function destroySession(sid) {
 function requireRole(role) {
   return (req, res, next) => {
     const session = getSession(req.cookies[COOKIE_NAME]);
-    if (!session || (role && session.type !== role)) {
+    // Admins are a superset of faculty: they pass every requireRole('faculty') check.
+    const allowed = !role || session.type === role || (role === 'faculty' && session.type === 'admin');
+    if (!session || !allowed) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     req.user = session;

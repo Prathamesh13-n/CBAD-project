@@ -72,8 +72,13 @@ for reference only.
 
 | Role    | Login ID        | Password     |
 |---------|------------------|--------------|
+| Admin   | `ADMIN001`       | `admin123`   |
 | Faculty | `FAC001`         | `faculty123` |
 | Student | Enrollment No. (e.g. `ADT24SOCB0001`) | `PASS123` (default) |
+
+> The default admin is created automatically on first run (`server/db.js`).
+> **Change its password** before sharing the app — admin passwords can't be
+> reset by email.
 
 Faculty adds real students one at a time (Faculty → Students → **Add
 Student**) or in bulk via **Import CSV** (a file with Enrollment No. + Name
@@ -155,9 +160,45 @@ The app walks a brand-new student through setup automatically:
   every project/group, filterable by status, with the timeliness badge
   visible at a glance and one-click Approve/Reject with feedback.
 
+### Sections (divisions)
+- Every student can have a **Section** (A, B, …) — set in Add/Edit Student,
+  by **🏫 Assign Section** (puts everyone currently listed into a section),
+  or by **🏫 Import Section** (upload one division's CSV; new students are
+  created in that section and existing ones are moved into it; a Section
+  column in the CSV narrows the import to the chosen division).
+- The faculty Students page has **section tabs** (All / Section A / Section B /
+  No Section, each with a count) and a Section column.
+
+### Exam submissions (TA1 / TA2 / End Sem)
+- Each group's **team leader** submits per exam: a link and/or **up to 5
+  files** (PDF, PPT/PPTX, CSV, DOC/DOCX, max 10MB each). Updating a
+  submission keeps existing files unless they are unticked.
+- Faculty see them under **Submissions → Exam Submissions** (tabs per exam,
+  "Not submitted" shown for groups that haven't). PDF, CSV and DOCX files
+  can be **viewed in the browser without downloading**; PPT/PPTX/DOC can only
+  be downloaded (browsers can't render them).
+- Faculty set a **deadline per exam**. After it passes the server rejects
+  submissions (students see "Closed"); setting a later date reopens it.
+
+### Admin panel
+- Log in as Admin → `admin.html`: add / edit / delete **students and
+  faculty**, bulk-import students from CSV, and see headline counts.
+- Admins also have **full faculty access** — the "Faculty Dashboard" link
+  opens the normal faculty dashboard (groups, projects, marks, submissions,
+  requests, announcements…). Server-side, `requireRole('faculty')` also
+  accepts admin sessions.
+
 ### Marks, Presentations, GitHub
 - Faculty edits marks (Internal/Project/Presentation/Viva); Total, %, and
   Grade are always derived, never stored directly.
+- Faculty Marks page: **section filter** (rows grouped per section with the
+  average), **search by enrollment no.**, and **+ Add Group Marks** — enter
+  marks once for a group and they are written to every member (blank fields
+  keep each member's existing mark).
+- **Marks are hidden from students until released.** Use **📢 Release All
+  Marks** or the 🔒/🔓 icon per student. Once released, a student sees their
+  own marks and a **Group Marks** card with their group members' marks
+  (the API only returns the student's own group, never other groups).
 - Students view marks with a donut chart (overall %) and a trend line chart
   across the four components.
 - Presentations scheduled/edited/rescheduled/cancelled/completed by faculty;
@@ -204,8 +245,10 @@ The app walks a brand-new student through setup automatically:
 
 ## Database
 
-SQLite tables (`server/db.js`): `faculty`, `students`, `student_groups`,
-`projects`, `submissions`, `marks`, `presentations`, `requests`,
+SQLite tables (`server/db.js`): `admins`, `faculty`, `students`
+(has `section`), `student_groups`, `projects`, `submissions`, `marks`
+(has `released`), `exam_submissions`, `exam_submission_files`,
+`exam_deadlines`, `presentations`, `requests`,
 `group_join_requests`, `student_requests`, `student_connections`,
 `notifications`, `announcements`, `activity`, `seed_meta`. Real foreign keys
 replace what used to be hand-synced LocalStorage arrays — e.g. group
@@ -227,6 +270,7 @@ CDAD/
 ├── index.html
 ├── student.html
 ├── faculty.html
+├── admin.html
 ├── group-details.html
 ├── Dockerfile
 ├── README.md
@@ -244,6 +288,8 @@ CDAD/
 │   ├── groups.js
 │   ├── projects.js
 │   ├── marks.js
+│   ├── examSubmissions.js
+│   ├── admin.js
 │   ├── presentations.js
 │   ├── requests.js
 │   ├── notifications.js
@@ -265,10 +311,14 @@ CDAD/
     ├── groupOps.js        (shared group-membership operations)
     ├── data/cdad.db       (SQLite file, created on first run — gitignored)
     └── routes/
-        ├── auth.js, students.js, faculty.js, groups.js, groupJoinRequests.js,
-        └── projects.js, marks.js, presentations.js, requests.js,
-            peerRequests.js, notifications.js, announcements.js, activity.js
+        ├── auth.js, students.js, faculty.js, admin.js, groups.js,
+        ├── groupJoinRequests.js, projects.js, marks.js, examSubmissions.js,
+        └── presentations.js, requests.js, peerRequests.js, notifications.js,
+            announcements.js, activity.js
 ```
+
+The full backend reference (roles, every endpoint, rules the server enforces)
+is in [BACKEND.md](BACKEND.md#backend-reference-for-contributors).
 
 ## Resetting the Demo Data
 

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel — CDAD</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/dashboard.css">
+<link rel="stylesheet" href="css/forms.css">
+<link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="sidebar__brand">
+      <div class="sidebar__mark">🎓</div>
+      <div class="sidebar__brand-text"><strong>CDAD</strong><span>Admin Panel</span></div>
+    </div>
+    <button class="nav-link active" data-view="overview"><span class="nav-link__icon">▣</span> Overview</button>
+    <button class="nav-link" data-view="students"><span class="nav-link__icon">●</span> Students</button>
+    <button class="nav-link" data-view="faculty"><span class="nav-link__icon">◎</span> Faculty</button>
+    <a class="nav-link" href="faculty.html" style="text-decoration:none;"><span class="nav-link__icon">➜</span> Faculty Dashboard</a>
+    <div class="sidebar__footer">
+      <button class="logout-btn" id="logoutBtn"><span class="nav-link__icon">⏻</span> Logout</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- OVERVIEW -->
+    <section class="view active" id="view-overview">
+      <div class="topbar">
+        <div><h1>Admin Overview</h1><div class="topbar__sub" id="adminWelcome">Manage every account in CDAD</div></div>
+      </div>
+      <div class="card-grid" id="adminStats"></div>
+      <div class="section" style="margin-top:18px;">
+        <div class="section__head"><h3>Full data access</h3></div>
+        <p class="field-hint">Admins can open the <a href="faculty.html">Faculty Dashboard</a> to view and manage groups, projects, marks, presentations, submissions, requests and announcements — everything a faculty member can.</p>
+      </div>
+    </section>
+
+    <!-- STUDENTS -->
+    <section class="view" id="view-students">
+      <div class="topbar">
+        <div><h1>Students</h1><div class="topbar__sub">Add and manage student accounts</div></div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="importStudentsBtn">Import CSV</button>
+          <button class="btn btn--primary" id="addStudentBtn">+ Add Student</button>
+        </div>
+      </div>
+      <div class="section">
+        <div class="filter-bar"><input type="search" id="studentSearch" placeholder="Search by ID, name or section..."><span class="faint" id="studentCount" style="font-size:12.5px;"></span></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Student ID</th><th>Name</th><th>Email</th><th>Section</th><th>Group</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="studentsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- FACULTY -->
+    <section class="view" id="view-faculty">
+      <div class="topbar">
+        <div><h1>Faculty</h1><div class="topbar__sub">Add and manage faculty accounts</div></div>
+        <div class="topbar__actions"><button class="btn btn--primary" id="addFacultyBtn">+ Add Faculty</button></div>
+      </div>
+      <div class="section">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Faculty ID</th><th>Name</th><th>Email</th><th>Department</th><th>Designation</th><th>Actions</th></tr></thead>
+            <tbody id="facultyBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/common.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

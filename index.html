@@ -44,6 +44,7 @@
         <div class="role-switch">
           <button type="button" class="active" data-role="student">Student</button>
           <button type="button" data-role="faculty">Faculty</button>
+          <button type="button" data-role="admin">Admin</button>
         </div>
         <div class="login-error" id="loginError"></div>
         <form id="loginForm">
@@ -80,8 +81,9 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('[data-role]').forEach((b) => b.classList.toggle('active', b === btn));
         selectedRole = btn.dataset.role;
-        document.getElementById('emailLabel').textContent = selectedRole === 'faculty' ? 'Faculty ID' : 'Student ID';
-        document.getElementById('loginEmail').placeholder = selectedRole === 'faculty' ? 'FAC001' : 'ADT24SOCB0001';
+        const roleText = { student: ['Student ID', 'ADT24SOCB0001'], faculty: ['Faculty ID', 'FAC001'], admin: ['Admin ID', 'ADMIN001'] }[selectedRole];
+        document.getElementById('emailLabel').textContent = roleText[0];
+        document.getElementById('loginEmail').placeholder = roleText[1];
         document.getElementById('loginError').classList.remove('show');
       });
     });
@@ -104,13 +106,13 @@
         errEl.classList.add('show');
         return;
       }
-      window.location.href = selectedRole === 'faculty' ? 'faculty.html' : 'student.html';
+      window.location.href = { faculty: 'faculty.html', admin: 'admin.html' }[selectedRole] || 'student.html';
     });
 
     // if already logged in, skip straight to dashboard
     (async function redirectIfLoggedIn() {
       const u = await getCurrentUser();
-      if (u) window.location.href = u.type === 'faculty' ? 'faculty.html' : 'student.html';
+      if (u) window.location.href = { faculty: 'faculty.html', admin: 'admin.html' }[u.type] || 'student.html';
     })();
 
     document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {

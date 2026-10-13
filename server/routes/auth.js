@@ -19,6 +19,18 @@ router.post('/login', (req, res) => {
   const idLower = String(id || '').trim().toLowerCase();
   const pass = String(password || '').trim();
 
+  if (role === 'admin') {
+    const adm = db.prepare('SELECT * FROM admins WHERE LOWER(display_id) = ?').get(idLower);
+    if (!adm || !bcrypt.compareSync(pass, adm.password_hash)) {
+      return res.status(401).json({ ok: false, error: 'Invalid Admin ID or password.' });
+    }
+    const user = { type: 'admin', id: adm.id, displayId: adm.display_id };
+    const sid = createSession(user);
+    res.cookie(COOKIE_NAME, sid, { httpOnly: true, sameSite: 'lax' });
+    logActivity(`Admin ${adm.display_id} logged in`);
+    return res.json({ ok: true, user });
+  }
+
   if (role === 'faculty') {
     const fac = db.prepare('SELECT * FROM faculty WHERE LOWER(display_id) = ?').get(idLower);
     if (!fac || !bcrypt.compareSync(pass, fac.password_hash)) {
@@ -54,6 +66,7 @@ router.post('/login', (req, res) => {
  */
 router.post('/forgot-password/request', async (req, res) => {
   const { role, id, email } = req.body || {};
+  if (role === 'admin') return res.status(400).json({ ok: false, error: 'Admin passwords cannot be reset by email. Ask another admin.' });
   const idLower = String(id || '').trim().toLowerCase();
   const emailLower = String(email || '').trim().toLowerCase();
 
@@ -75,8 +88,9 @@ router.post('/forgot-password/request', async (req, res) => {
 });
 
 /** Self-service password reset, step 2 of 2 — the code emailed in step 1, plus the new password. */
-router.post('/forgot-password/confirm', (req, res) => {
+router.post('/forgot-password/confirm', async (req, res) => {
   const { role, id, code, newPassword } = req.body || {};
+  if (role === 'admin') return res.status(400).json({ ok: false, error: 'Admin passwords cannot be reset by email.' });
   const idLower = String(id || '').trim().toLowerCase();
   const pass = String(newPassword || '').trim();
 
@@ -112,6 +126,12 @@ router.post('/logout', (req, res) => {
 router.get('/me', (req, res) => {
   const session = getSession(req.cookies[COOKIE_NAME]);
   if (!session) return res.json(null);
+  if (session.type === 'admin') {
+    const adm = db.prepare('SELECT * FROM admins WHERE id = ?').get(session.id);
+    // Faculty-shaped so the faculty dashboard can render an admin too.
+    return res.json(adm ? { type: 'admin', id: adm.id, displayId: adm.display_id, name: adm.name, email: adm.email,
+      phone: '', department: 'Administration', designation: 'Administrator', avatar: '', session: '' } : null);
+  }
   if (session.type === 'faculty') {
     const fac = db.prepare('SELECT * FROM faculty WHERE id = ?').get(session.id);
     return res.json(fac ? Object.assign({ type: 'faculty' }, serializeFaculty(fac)) : null);

@@ -30,6 +30,30 @@ async function upsertMarks(studentDisplayId, fields) {
   return res.ok ? res.json() : null;
 }
 
+async function upsertGroupMarks(groupDisplayId, fields) {
+  const res = await fetch(`/api/marks/group/${encodeURIComponent(groupDisplayId)}`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields)
+  });
+  return res.ok ? res.json() : null;
+}
+
+async function releaseAllMarks(released = true) {
+  const res = await fetch('/api/marks/release-all', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ released })
+  });
+  return res.ok ? res.json() : null;
+}
+
+async function setMarksReleased(id, released) {
+  const res = await fetch(`/api/marks/${id}/release`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ released })
+  });
+  return res.ok;
+}
+
 async function deleteMarks(id) {
   return deleteData(CDAD_KEYS.MARKS, id);
 }

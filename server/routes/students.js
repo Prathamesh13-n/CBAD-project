@@ -21,10 +21,10 @@ router.post('/', requireRole('faculty'), (req, res) => {
   const passwordHash = bcrypt.hashSync(f.password || 'PASS123', 10);
   const groupId = f.group ? groupIdByDisplayId(f.group) : null;
   const info = db.prepare(`
-    INSERT INTO students (display_id, name, email, password_hash, phone, course, year, department, group_id, role, status, avatar)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO students (display_id, name, email, password_hash, phone, course, year, department, group_id, role, status, avatar, section)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(displayId, f.name, f.email || '', passwordHash, f.phone || '', f.course || '', f.year || '',
-    f.department || '', groupId, f.role || 'Member', f.status || 'Active', f.avatar || '');
+    f.department || '', groupId, f.role || 'Member', f.status || 'Active', f.avatar || '', (f.section || '').trim());
   logActivity(`Student ${displayId} added`);
   res.status(201).json(serializeStudent(db.prepare('SELECT * FROM students WHERE id = ?').get(info.lastInsertRowid)));
 });
@@ -35,7 +35,7 @@ router.put('/:id', requireRole(), (req, res) => {
   if (req.user.type === 'student' && req.user.id !== row.id) return res.status(403).json({ error: 'Forbidden' });
 
   const f = req.body || {};
-  const isFaculty = req.user.type === 'faculty';
+  const isFaculty = req.user.type === 'faculty' || req.user.type === 'admin';
   const fields = {
     name: f.name !== undefined ? f.name : row.name,
     email: f.email !== undefined ? f.email : row.email,
@@ -44,16 +44,17 @@ router.put('/:id', requireRole(), (req, res) => {
     course: isFaculty && f.course !== undefined ? f.course : row.course,
     year: isFaculty && f.year !== undefined ? f.year : row.year,
     department: isFaculty && f.department !== undefined ? f.department : row.department,
+    section: isFaculty && f.section !== undefined ? String(f.section).trim() : row.section,
     role: isFaculty && f.role !== undefined ? f.role : row.role,
     status: isFaculty && f.status !== undefined ? f.status : row.status
   };
   const passwordHash = isFaculty && f.password ? bcrypt.hashSync(f.password, 10) : row.password_hash;
 
   db.prepare(`
-    UPDATE students SET name=?, email=?, phone=?, avatar=?, course=?, year=?, department=?, role=?, status=?, password_hash=?
+    UPDATE students SET name=?, email=?, phone=?, avatar=?, course=?, year=?, department=?, section=?, role=?, status=?, password_hash=?
     WHERE id=?
   `).run(fields.name, fields.email, fields.phone, fields.avatar, fields.course, fields.year,
-    fields.department, fields.role, fields.status, passwordHash, row.id);
+    fields.department, fields.section, fields.role, fields.status, passwordHash, row.id);
 
   if (isFaculty && f.group !== undefined) {
     const newGroupId = f.group ? groupIdByDisplayId(f.group) : null;
@@ -74,6 +75,8 @@ router.delete('/:id', requireRole('faculty'), (req, res) => {
 
 /** "Delete All" — clears a bad CSV import. Groups' team_leader_id/members fall out automatically. */
 router.delete('/', requireRole('faculty'), (req, res) => {
+  // submissions.submitted_by_id has no ON DELETE action, so detach it first or the delete is rejected.
+  db.prepare('UPDATE submissions SET submitted_by_id = NULL').run();
   db.prepare('DELETE FROM students').run();
   logActivity('All students deleted');
   res.json({ ok: true });

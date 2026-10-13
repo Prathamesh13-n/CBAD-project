@@ -15,6 +15,14 @@ db.exec('PRAGMA foreign_keys = ON');
 db.exec('PRAGMA journal_mode = WAL');
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS admins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  display_id TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT,
+  password_hash TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS faculty (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   display_id TEXT UNIQUE NOT NULL,
@@ -76,6 +84,29 @@ CREATE TABLE IF NOT EXISTS marks (
   presentation INTEGER DEFAULT 0, presentation_max INTEGER DEFAULT 20,
   viva INTEGER DEFAULT 0, viva_max INTEGER DEFAULT 10
 );
+
+CREATE TABLE IF NOT EXISTS exam_submissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES student_groups(id) ON DELETE CASCADE,
+  exam TEXT NOT NULL,
+  link TEXT, note TEXT,
+  submitted_by_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+  submitted_at TEXT,
+  file_name TEXT, file_path TEXT, file_type TEXT, file_size INTEGER,
+  UNIQUE (group_id, exam)
+);
+
+CREATE TABLE IF NOT EXISTS exam_deadlines (
+  exam TEXT PRIMARY KEY,
+  deadline TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exam_submission_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submission_id INTEGER NOT NULL REFERENCES exam_submissions(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL, file_path TEXT NOT NULL, file_type TEXT, file_size INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_exam_files_sub ON exam_submission_files(submission_id);
 
 CREATE TABLE IF NOT EXISTS presentations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +185,25 @@ CREATE TABLE IF NOT EXISTS seed_meta (key TEXT PRIMARY KEY, value TEXT);
 function ensureColumn(table, column, type) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
   if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+ensureColumn('students', 'section', 'TEXT');
+// First run only: create the default administrator. Change this password after logging in.
+if (!db.prepare('SELECT 1 FROM admins LIMIT 1').get()) {
+  db.prepare('INSERT INTO admins (display_id, name, email, password_hash) VALUES (?, ?, ?, ?)')
+    .run('ADMIN001', 'Administrator', 'admin@cdad.edu', require('bcryptjs').hashSync('admin123', 10));
+}
+// Exam submissions used to hold a single file inline; move any into the files table.
+db.exec(`
+  INSERT INTO exam_submission_files (submission_id, file_name, file_path, file_type, file_size)
+  SELECT id, file_name, file_path, file_type, file_size FROM exam_submissions WHERE file_path IS NOT NULL AND file_path != '';
+  UPDATE exam_submissions SET file_name = NULL, file_path = NULL, file_type = NULL, file_size = NULL
+  WHERE file_path IS NOT NULL AND file_path != '';
+`);
+// Marks are hidden from students until faculty release them. Marks that already
+// existed before this column was added were visible, so keep them released.
+if (!db.prepare('PRAGMA table_info(marks)').all().some((c) => c.name === 'released')) {
+  db.exec('ALTER TABLE marks ADD COLUMN released INTEGER DEFAULT 0');
+  db.exec('UPDATE marks SET released = 1');
 }
 ensureColumn('submissions', 'file_name', 'TEXT');
 ensureColumn('submissions', 'file_path', 'TEXT');
