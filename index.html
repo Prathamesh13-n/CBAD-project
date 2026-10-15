@@ -124,87 +124,71 @@
       const idLabel = selectedRole === 'faculty' ? 'Faculty ID' : 'Student ID';
       const idPlaceholder = selectedRole === 'faculty' ? 'FAC001' : 'ADT24SOCB0001';
       const prefillId = document.getElementById('loginEmail').value.trim();
+      if (selectedRole === 'admin') {
+        openModal('Reset Your Password', '<p class="field-hint">Admin passwords can\'t be reset from the login page. Ask another admin to change it in the Admin Panel.</p>');
+        return;
+      }
       openModal('Reset Your Password', `
         <p class="field-hint" style="margin-bottom:14px;">
-          Enter your ${idLabel} and the email already on file for your account —
-          we'll email you a 6-digit code to confirm it's you.
+          Enter your ${idLabel} and the email on file for your account, solve the captcha, then choose a new password.
         </p>
         <div class="login-error" id="forgotError" style="margin-bottom:10px;"></div>
-        <form id="forgotRequestForm">
+        <form id="forgotResetForm">
           <div class="form-grid">
             <div class="field full"><label>${idLabel}</label><input name="id" required placeholder="${idPlaceholder}" value="${escapeHtml(prefillId)}"></div>
             <div class="field full"><label>Email on file</label><input type="email" name="email" required placeholder="you@cdad.edu"></div>
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn--ghost" id="cancelForgotPassword">Cancel</button>
-            <button type="submit" class="btn btn--primary">Send Code</button>
-          </div>
-        </form>
-      `, {
-        onMount: () => {
-          document.getElementById('cancelForgotPassword').addEventListener('click', closeModal);
-          document.getElementById('forgotRequestForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            const errEl = document.getElementById('forgotError');
-            errEl.classList.remove('show');
-            const submitBtn = e.target.querySelector('button[type=submit]');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Sending...';
-
-            const id = fd.get('id').trim();
-            const email = fd.get('email').trim();
-            const result = await requestPasswordReset(selectedRole, id, email);
-            if (!result.ok) {
-              errEl.textContent = result.error;
-              errEl.classList.add('show');
-              submitBtn.disabled = false;
-              submitBtn.textContent = 'Send Code';
-              return;
-            }
-            openConfirmResetModal(id, email);
-          });
-        }
-      });
-    }
-
-    function openConfirmResetModal(id, email) {
-      openModal('Enter the Code We Emailed You', `
-        <p class="field-hint" style="margin-bottom:14px;">
-          A 6-digit code was sent to ${escapeHtml(email)}. Enter it below along with your new password.
-        </p>
-        <div class="login-error" id="confirmResetError" style="margin-bottom:10px;"></div>
-        <form id="confirmResetForm">
-          <div class="form-grid">
-            <div class="field full"><label>6-Digit Code</label><input name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456"></div>
+            <div class="field full">
+              <label>Captcha</label>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div id="captchaImage" style="border-radius:8px; overflow:hidden; min-height:56px; min-width:170px; background:#eef2fb;"></div>
+                <button type="button" class="btn btn--ghost btn--sm" id="refreshCaptcha" title="Get a new captcha">↻ New</button>
+              </div>
+              <input name="captchaText" required autocomplete="off" maxlength="5" placeholder="Type the characters above" style="margin-top:8px; text-transform:uppercase;">
+            </div>
             <div class="field full"><label>New Password</label><input type="password" name="newPassword" required minlength="4"></div>
             <div class="field full"><label>Confirm New Password</label><input type="password" name="confirmPassword" required minlength="4"></div>
           </div>
           <div class="form-actions">
-            <button type="button" class="btn btn--ghost" id="backToRequestReset">Back</button>
+            <button type="button" class="btn btn--ghost" id="cancelForgotPassword">Cancel</button>
             <button type="submit" class="btn btn--primary">Reset Password</button>
           </div>
         </form>
       `, {
         onMount: () => {
-          document.getElementById('backToRequestReset').addEventListener('click', openForgotPasswordModal);
-          document.getElementById('confirmResetForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            const errEl = document.getElementById('confirmResetError');
-            errEl.classList.remove('show');
+          let captchaId = null;
+          const errEl = document.getElementById('forgotError');
+          const form = document.getElementById('forgotResetForm');
+          async function loadCaptcha() {
+            const c = await fetchCaptcha();
+            document.getElementById('captchaImage').innerHTML = c ? c.svg : '<span class="faint">Could not load captcha</span>';
+            captchaId = c ? c.id : null;
+            form.captchaText.value = '';
+          }
+          loadCaptcha();
+          document.getElementById('refreshCaptcha').addEventListener('click', loadCaptcha);
+          document.getElementById('cancelForgotPassword').addEventListener('click', closeModal);
 
-            const newPassword = fd.get('newPassword');
-            if (newPassword !== fd.get('confirmPassword')) {
+          form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(form);
+            errEl.classList.remove('show');
+            if (fd.get('newPassword') !== fd.get('confirmPassword')) {
               errEl.textContent = 'Passwords do not match.';
               errEl.classList.add('show');
               return;
             }
-
-            const result = await confirmPasswordReset(selectedRole, id, fd.get('code').trim(), newPassword);
+            const submitBtn = form.querySelector('button[type=submit]');
+            submitBtn.disabled = true;
+            const id = fd.get('id').trim();
+            const result = await resetPasswordWithCaptcha({
+              role: selectedRole, id, email: fd.get('email').trim(),
+              captchaId, captchaText: fd.get('captchaText').trim(), newPassword: fd.get('newPassword')
+            });
+            submitBtn.disabled = false;
             if (!result.ok) {
               errEl.textContent = result.error;
               errEl.classList.add('show');
+              await loadCaptcha(); // a captcha is single-use — always show a fresh one after a failed try
               return;
             }
             closeModal();

@@ -7,7 +7,8 @@ const express = require('express');
 const path = require('node:path');
 const { db, logActivity } = require('../db');
 const { requireRole } = require('../sessions');
-const { upload, UPLOAD_DIR, deleteUploadedFile } = require('../upload');
+const { upload, deleteUploadedFile } = require('../upload');
+const { persistUploads, send: sendStoredFile } = require('../fileStore');
 const { createNotification } = require('../notify');
 
 const router = express.Router();
@@ -94,7 +95,7 @@ function requireLeaderOfOwnGroup(req, res, next) {
 /** multipart: `link`, `note`, up to 5 `files`, and optional `removeFileIds` (JSON array
     of existing file ids to drop). Existing files are kept unless removed; the total
     after the change may not exceed ${MAX_FILES}. */
-router.post('/:exam', requireRole('student'), requireLeaderOfOwnGroup, upload.array('files', MAX_FILES), (req, res) => {
+router.post('/:exam', requireRole('student'), requireLeaderOfOwnGroup, upload.array('files', MAX_FILES), persistUploads, (req, res) => {
   const { link, note } = req.body || {};
   const newFiles = req.files || [];
   const discardNew = () => newFiles.forEach((f) => deleteUploadedFile(f.filename));
@@ -139,7 +140,7 @@ router.post('/:exam', requireRole('student'), requireLeaderOfOwnGroup, upload.ar
   res.json(serialize(row));
 });
 
-router.get('/files/:fileId', requireRole(), (req, res) => {
+router.get('/files/:fileId', requireRole(), async (req, res) => {
   const f = db.prepare(`
     SELECT f.*, s.group_id FROM exam_submission_files f JOIN exam_submissions s ON s.id = f.submission_id WHERE f.id = ?
   `).get(req.params.fileId);
@@ -153,12 +154,9 @@ router.get('/files/:fileId', requireRole(), (req, res) => {
     const types = { pdf: 'application/pdf', csv: 'text/plain; charset=utf-8', docx: 'application/octet-stream' };
     const type = types[(f.file_type || '').toLowerCase()];
     if (!type) return res.status(415).json({ error: 'This file type cannot be previewed. Download it instead.' });
-    res.setHeader('Content-Type', type);
-    res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    return res.sendFile(path.join(UPLOAD_DIR, f.file_path));
+    return sendStoredFile(res, f.file_path, f.file_name, { inline: true, contentType: type });
   }
-  res.download(path.join(UPLOAD_DIR, f.file_path), f.file_name);
+  await sendStoredFile(res, f.file_path, f.file_name);
 });
 
 router.delete('/:id', requireRole('faculty'), (req, res) => {

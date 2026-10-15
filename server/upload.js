@@ -10,8 +10,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 const multer = require('multer');
 
-const UPLOAD_DIR = path.join(__dirname, 'data', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Multer always writes to local disk first; fileStore.persistUploads then moves the file to
+// Appwrite when that is configured (see fileStore.js).
+const { UPLOAD_DIR, remove } = require('./fileStore');
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.ppt', '.pptx', '.csv', '.doc', '.docx'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -37,9 +38,7 @@ const upload = multer({
   }
 });
 
-function deleteUploadedFile(fileName) {
-  if (!fileName) return;
-  fs.unlink(path.join(UPLOAD_DIR, fileName), () => {}); // best-effort, ignore errors
-}
+/** Best-effort delete of a stored file (local name or Appwrite ref). */
+const deleteUploadedFile = remove;
 
 module.exports = { upload, UPLOAD_DIR, deleteUploadedFile, ALLOWED_EXTENSIONS, MAX_FILE_SIZE };

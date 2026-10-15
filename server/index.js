@@ -8,9 +8,16 @@ const path = require('node:path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 
-require('./seed').seedIfEmpty();
+// Settings from server/.env (Node 20.12+); real environment variables (Docker, hosting panels) win.
+try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* no .env file — fine */ }
+
+// SKIP_SEED=true: a real deployment — don't create or wipe demo data. The default admin
+// (ADMIN001) still exists, so sign in and add faculty/students from the Admin Panel.
+if (process.env.SKIP_SEED === 'true') console.log('SKIP_SEED=true — demo data not seeded.');
+else require('./seed').seedIfEmpty();
 
 const app = express();
+if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
 app.use(express.json());
 app.use(cookieParser());
 

@@ -10,10 +10,13 @@ COPY server/package*.json ./server/
 RUN cd server && npm ci --omit=dev
 
 COPY server/ ./server/
-COPY index.html student.html faculty.html group-details.html ./
+COPY index.html student.html faculty.html admin.html group-details.html ./
 COPY css/ ./css/
 COPY js/ ./js/
 
 EXPOSE 3000
+
+ENV NODE_ENV=production
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD wget -qO- http://localhost:3000/api/auth/me || exit 1
 
 CMD ["node", "server/index.js"]

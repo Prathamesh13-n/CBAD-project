@@ -14,6 +14,19 @@ router.use(requireRole('admin'));
 
 const clean = (v) => (v === undefined || v === null ? '' : String(v).trim());
 
+/** An admin changes their own password (the shipped default must be replaced). */
+router.put('/me/password', (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  const row = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.user.id);
+  if (!row || !bcrypt.compareSync(String(currentPassword || ''), row.password_hash)) {
+    return res.status(401).json({ error: 'Current password is incorrect.' });
+  }
+  if (String(newPassword || '').length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+  db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(String(newPassword), 10), row.id);
+  logActivity(`Admin ${row.display_id} changed their password`);
+  res.json({ ok: true });
+});
+
 router.get('/overview', (req, res) => {
   const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
   res.json({

@@ -21,34 +21,23 @@ async function attemptLogin(role, studentOrFacultyId, password) {
   return { ok: true, user: data.user };
 }
 
-/**
- * Self-service password reset, step 1 of 2: verifies `id` against the
- * email on file, then emails a 6-digit code to that address.
- * Returns { ok, error } — never throws.
- */
-async function requestPasswordReset(role, id, email) {
-  const res = await fetch('/api/auth/forgot-password/request', {
-    method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role, id, email })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: data.error || 'Could not send the reset email.' };
-  return { ok: true };
+/** Fetches a new captcha: { id, svg } or null. */
+async function fetchCaptcha() {
+  const res = await fetch('/api/auth/captcha', { credentials: 'include', cache: 'no-store' });
+  return res.ok ? res.json() : null;
 }
 
 /**
- * Self-service password reset, step 2 of 2: the code emailed in step 1
- * plus the new password. Returns { ok, error } — never throws.
+ * Self-service password reset: ID + email on file + solved captcha + new password.
+ * Returns { ok, error, captchaFailed } — never throws.
  */
-async function confirmPasswordReset(role, id, code, newPassword) {
-  const res = await fetch('/api/auth/forgot-password/confirm', {
+async function resetPasswordWithCaptcha(payload) {
+  const res = await fetch('/api/auth/forgot-password/reset', {
     method: 'POST', credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role, id, code, newPassword })
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: data.error || 'Could not reset password.' };
+  if (!res.ok) return { ok: false, error: data.error || 'Could not reset password.', captchaFailed: !!data.captchaFailed };
   return { ok: true };
 }
 

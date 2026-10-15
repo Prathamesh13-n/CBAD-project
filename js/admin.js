@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.nav-link[data-view]').forEach((x) => x.classList.toggle('active', x === b));
   }));
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('changePasswordBtn').addEventListener('click', changePasswordModal);
   document.getElementById('addStudentBtn').addEventListener('click', () => studentModal(null));
   document.getElementById('importStudentsBtn').addEventListener('click', importModal);
   document.getElementById('addFacultyBtn').addEventListener('click', () => facultyModal(null));
@@ -222,6 +223,38 @@ function importModal() {
         if (!r.ok) return showToast(r.error, 'error');
         showToast(`Imported ${r.data.added} student(s)${r.data.skipped.length ? `, skipped ${r.data.skipped.length}` : ''}`, 'success');
         await refresh();
+      });
+    }
+  });
+}
+
+/* ---------------- Admin's own password ---------------- */
+function changePasswordModal() {
+  openModal('Change Password', `
+    <form id="adminPwForm">
+      <div class="login-error" id="adminPwError"></div>
+      <div class="form-grid">
+        <div class="field full"><label>Current password</label><input type="password" name="currentPassword" required></div>
+        <div class="field full"><label>New password (min 8 characters)</label><input type="password" name="newPassword" required minlength="8"></div>
+        <div class="field full"><label>Confirm new password</label><input type="password" name="confirm" required minlength="8"></div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" id="adminPwCancel">Cancel</button>
+        <button type="submit" class="btn btn--primary">Change Password</button>
+      </div>
+    </form>`, {
+    onMount: () => {
+      document.getElementById('adminPwCancel').addEventListener('click', closeModal);
+      document.getElementById('adminPwForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(e.target).entries());
+        const err = document.getElementById('adminPwError');
+        err.classList.remove('show');
+        if (body.newPassword !== body.confirm) { err.textContent = 'Passwords do not match.'; err.classList.add('show'); return; }
+        const r = await api('PUT', '/api/admin/me/password', { currentPassword: body.currentPassword, newPassword: body.newPassword });
+        if (!r.ok) { err.textContent = r.error; err.classList.add('show'); return; }
+        closeModal();
+        showToast('Password changed', 'success');
       });
     }
   });

@@ -77,8 +77,8 @@ for reference only.
 | Student | Enrollment No. (e.g. `ADT24SOCB0001`) | `PASS123` (default) |
 
 > The default admin is created automatically on first run (`server/db.js`).
-> **Change its password** before sharing the app — admin passwords can't be
-> reset by email.
+> **Change its password** (Admin Panel → 🔑 Change Password) before sharing the app — admin passwords can't be
+> reset from the login page.
 
 Faculty adds real students one at a time (Faculty → Students → **Add
 Student**) or in bulk via **Import CSV** (a file with Enrollment No. + Name
@@ -89,12 +89,11 @@ the CSV specifies one.
 Faculty can change any student's login ID or password any time from Faculty
 → Students → **Edit ✎**.
 
-Anyone can also reset their own password from the login page's **Forgot
-Password?** link: enter your ID and the email on file for your account,
-and a real 6-digit confirmation code is emailed to you (via Gmail SMTP —
-see `server/.env.example` for the one-time setup). Enter that code plus
-your new password to finish. The code expires after 10 minutes and can
-only be used once.
+Students and faculty can reset their own password from the login page's
+**Forgot Password?** link: enter your ID and the email on file for your
+account, solve the **image captcha**, and choose a new password. No email
+service is needed. (Admins can't use this — another admin changes their
+password in the Admin Panel.)
 
 ### First login for a new student
 
@@ -316,6 +315,9 @@ CDAD/
         └── presentations.js, requests.js, peerRequests.js, notifications.js,
             announcements.js, activity.js
 ```
+
+To put it online with Docker (and optionally keep uploaded files in Appwrite),
+see [DEPLOY.md](DEPLOY.md).
 
 The full backend reference (roles, every endpoint, rules the server enforces)
 is in [BACKEND.md](BACKEND.md#backend-reference-for-contributors).

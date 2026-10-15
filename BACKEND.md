@@ -38,12 +38,10 @@ class, so this branch adds a proper backend.
 - **Dockerfile updated** to run the new Node server instead of a static
   nginx container (see "Running with Docker" below).
 - **New: self-service "Forgot Password"** on the login page (it was a
-  dead link before), now a real two-step flow: enter your ID + email on
-  file → a 6-digit code is emailed to you (via Gmail SMTP, see
-  `server/.env.example`) → enter the code + new password. The code
-  expires in 10 minutes and is single-use. **Requires one-time setup**
-  (see "Setting up email" below) — without it, this feature returns a
-  clear error instead of crashing, but it can't actually send anything.
+  dead link before): enter your ID + the email on file + solve an image
+  captcha + a new password. The captcha is a server-generated SVG drawn
+  from bitmap glyphs (no <text> in the markup), single-use, expires in 5
+  minutes. No email setup is needed.
 - **New: file attachments on the Submission tab.** Students can now
   attach a PDF, PPT/PPTX, CSV, or DOC/DOCX file (max 10MB) alongside or
   instead of a link. Files live under `server/data/uploads/` — already
@@ -80,28 +78,6 @@ git pull
 (If you don't have the repo cloned yet: `git clone
 https://github.com/Prathamesh13-n/CBAD-project.git && cd CBAD-project &&
 git checkout backend-migration`)
-
-## Setting up email (for Forgot Password)
-
-This is optional — everything else works without it. Skip it and Forgot
-Password will just return a clear error instead of sending anything.
-
-1. Turn on 2-Step Verification on the Google account you want to send
-   from, if it isn't already: https://myaccount.google.com/security
-2. Generate an App Password (choose "Mail" as the app):
-   https://myaccount.google.com/apppasswords — Google gives you a
-   16-character code. This is NOT your real Gmail password; use the App
-   Password.
-3. **Plain Node**: copy `server/.env.example` to `server/.env` and fill
-   in `GMAIL_USER` (your Gmail address) and `GMAIL_APP_PASSWORD` (the
-   16-character code). `server/.env` is gitignored — never commit it.
-4. **Docker**: pass them as `-e` flags on `docker run` instead of a
-   `.env` file:
-   ```bash
-   docker run -d -p 3000:3000 -v cdad-data:/app/server/data \
-     -e GMAIL_USER=youraddress@gmail.com -e GMAIL_APP_PASSWORD=your16charcode \
-     --name cdad-container cdad
-   ```
 
 ## How to run it
 
@@ -154,10 +130,9 @@ Same as before — by ID, never by email:
 | Faculty | `FAC001`         | `faculty123` |
 | Student | `ADT24SOCB0001`, `ADT24SOCB0002`, `ADT24SOCB0820`, `ADT24SOCB0020` | `PASS123` |
 
-To try the new **Forgot Password** link (once email is set up — see
-above): on the login page, enter `ADT24SOCB0001` + `hanfa@cdad.edu` (the
-email on file for that student), check that inbox for the 6-digit code,
-then enter the code + a new password.
+To try the new **Forgot Password** link: on the login page enter
+`ADT24SOCB0001` + `hanfa@cdad.edu` (the email on file for that student),
+type the captcha shown, then choose a new password.
 
 ## If something doesn't work
 
@@ -214,6 +189,9 @@ database upgrades in place — no reset needed.
 | `GET /api/exam-submissions/files/:fileId[?inline=1]` | faculty/admin, own-group students | Download; `inline=1` serves pdf/csv/docx for in-browser preview |
 | `PUT /api/exam-submissions/deadlines/:exam` | faculty/admin | `{deadline: ISO}` sets, empty clears; notifies students |
 | `DELETE /api/exam-submissions/:id` | faculty/admin | Remove a submission and its files |
+| `GET /api/auth/captcha` | public | New image captcha `{id, svg}`; answer kept server-side |
+| `POST /api/auth/forgot-password/reset` | public | `{role, id, email, captchaId, captchaText, newPassword}` — student/faculty only; the captcha is checked (and consumed) first, then ID + email must match |
+| `PUT /api/admin/me/password` | admin | `{currentPassword, newPassword}` (min 8) |
 | `GET /api/admin/overview` | admin | Counts |
 | `GET/POST/PUT/DELETE /api/admin/students[/:id]` | admin | Student account CRUD |
 | `POST /api/admin/students/import` | admin | `{students:[…]}` bulk add; existing IDs skipped and reported |
@@ -240,3 +218,14 @@ loads for admins (`currentFacultyRecord()` accepts both roles).
 Copy the project folder, start the copy on another port
 (`PORT=3200 node server/index.js`) and test against that — the SQLite file in
 `server/data/` is the live data. Back it up (`cdad.db*`) before destructive actions.
+
+### File storage (`server/fileStore.js`)
+Uploaded files go through one module with two backends: local disk
+(`server/data/uploads/`, the default) or **Appwrite Storage** when
+`APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`, `APPWRITE_API_KEY` and
+`APPWRITE_BUCKET_ID` are all set. multer still writes to disk first;
+`persistUploads` (middleware after multer) then uploads to Appwrite and replaces
+the stored name with a ref `appwrite:<fileId>`. That ref is what lives in the
+`file_path` columns, and `send()` / `remove()` pick the backend from the ref's
+prefix, so old local files keep working after switching. See [DEPLOY.md](DEPLOY.md).
+Other deployment switches: `SKIP_SEED`, `COOKIE_SECURE`, `TRUST_PROXY` (read in `index.js` / `routes/auth.js`).

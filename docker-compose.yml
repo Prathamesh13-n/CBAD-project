@@ -1,0 +1,22 @@
+# CDAD — one container: Express API + static frontend + SQLite.
+#   docker compose up -d --build      start (or rebuild after pulling changes)
+#   docker compose logs -f cdad       watch the logs
+#   docker compose down               stop (data is kept in the cdad-data volume)
+# Settings go in a file named .env next to this one — copy .env.example and edit.
+services:
+  cdad:
+    build: .
+    container_name: cdad
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+    volumes:
+      - cdad-data:/app/server/data   # SQLite file + (local-disk) uploads
+
+volumes:
+  cdad-data:

@@ -11,7 +11,8 @@ const { db, nextSequentialId, computeProgressFromStages, PROJECT_STAGES, logActi
 const { serializeProject, groupIdByDisplayId, groupDisplayId, studentDisplayId } = require('../serializers');
 const { requireRole } = require('../sessions');
 const { createNotification } = require('../notify');
-const { upload, UPLOAD_DIR, deleteUploadedFile } = require('../upload');
+const { upload, deleteUploadedFile } = require('../upload');
+const { persistUploads, send: sendStoredFile } = require('../fileStore');
 
 const router = express.Router();
 
@@ -128,7 +129,7 @@ function requireTeamLeader(req, res, next) {
     server/upload.js. At least one of link or file (new or already on
     record) is required; a resubmission that omits a new file keeps
     whatever file was already attached. */
-router.post('/:id/submission', requireRole('student'), requireTeamLeader, upload.single('file'), (req, res) => {
+router.post('/:id/submission', requireRole('student'), requireTeamLeader, upload.single('file'), persistUploads, (req, res) => {
   const row = getRow(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const { link, note } = req.body || {};
@@ -215,12 +216,12 @@ router.put('/:id/submission/review', requireRole('faculty'), (req, res) => {
 
 /** Streams the attached submission file as a download — faculty reviewing it,
     or the submitting group checking their own upload. */
-router.get('/:id/submission/file', requireRole(), (req, res) => {
+router.get('/:id/submission/file', requireRole(), async (req, res) => {
   const row = getRow(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const sub = db.prepare('SELECT file_name, file_path FROM submissions WHERE project_id = ?').get(row.id);
   if (!sub || !sub.file_path) return res.status(404).json({ error: 'No file attached to this submission.' });
-  res.download(path.join(UPLOAD_DIR, sub.file_path), sub.file_name);
+  await sendStoredFile(res, sub.file_path, sub.file_name);
 });
 
 module.exports = router;
