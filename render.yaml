@@ -1,0 +1,28 @@
+# Render Blueprint — New + > Blueprint, pick this repo/branch. See DEPLOY.md ("Render").
+# The persistent disk (SQLite database lives on it) is only available on PAID instance
+# types; a free instance has no disk, so every deploy/restart would erase the data.
+services:
+  - type: web
+    name: cdad
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/auth/me
+    disk:
+      name: cdad-data
+      mountPath: /app/server/data
+      sizeGB: 1
+    envVars:
+      - key: SKIP_SEED          # real deployment: no demo accounts (ADMIN001 still exists)
+        value: "true"
+      - key: COOKIE_SECURE      # Render serves HTTPS
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: APPWRITE_ENDPOINT
+        value: https://fra.cloud.appwrite.io/v1
+      - key: APPWRITE_PROJECT_ID
+        sync: false             # asked for in the Render dashboard, never stored in git
+      - key: APPWRITE_BUCKET_ID
+        sync: false
+      - key: APPWRITE_API_KEY
+        sync: false

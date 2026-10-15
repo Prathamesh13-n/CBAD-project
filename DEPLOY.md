@@ -102,3 +102,30 @@ Notes:
 - If Appwrite is unreachable when a student uploads, the upload is rejected
   with a clear error (nothing is half-saved).
 - The database itself stays in SQLite; only files move.
+
+## 5. Hosting on Render (managed)
+
+`render.yaml` in the repo root describes the service, so Render can set it up for you.
+
+1. Push the repo to GitHub (already done for `backend-migration`; use whichever branch you want live).
+2. Render dashboard → **New → Blueprint** → connect the GitHub repo and branch.
+3. Render reads `render.yaml` and asks for the three values marked `sync: false`:
+   `APPWRITE_PROJECT_ID`, `APPWRITE_BUCKET_ID`, `APPWRITE_API_KEY`. Paste them there
+   (not in git). Leave them empty to keep files on the disk instead.
+4. Create. The first build takes a few minutes. You get a `https://cdad-xxxx.onrender.com` address.
+5. Open it, log in on the **Admin** tab (`ADMIN001` / `admin123`), click
+   **🔑 Change Password**, then add faculty and import students.
+
+Important:
+- **Use a paid instance (`starter` or above).** The database is a SQLite file on the
+  persistent disk (`/app/server/data`), and Render only offers disks on paid instances.
+  A free instance has no disk — data would be wiped on every restart.
+- Only **one** instance: SQLite and in-memory sessions don't work across several. Don't scale out.
+- Each deploy restarts the app, which logs everyone out (sessions are in memory).
+- Render's disk is backed up as snapshots on its side; still export your own copy
+  now and then (Render dashboard → Shell, or the backup command in section 1).
+- For a custom domain, add it in the Render dashboard; HTTPS is automatic.
+
+**Railway / Fly.io** work the same way: build from the `Dockerfile`, attach a volume
+mounted at `/app/server/data`, run a single instance, and set the same environment
+variables (`SKIP_SEED`, `COOKIE_SECURE`, `TRUST_PROXY`, `APPWRITE_*`).
