@@ -5,6 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Student Dashboard — CDAD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/dashboard.css">
   <link rel="stylesheet" href="css/forms.css">
@@ -15,26 +18,28 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <div class="sidebar__mark">🎓</div>
+        <div class="sidebar__mark">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5"></path></svg>
+        </div>
         <div class="sidebar__brand-text"><strong>CDAD</strong><span>Student Portal</span></div>
       </div>
-      <button class="nav-link active" data-view="overview"><span class="nav-link__icon">▣</span> Dashboard</button>
-      <button class="nav-link" data-view="profile"><span class="nav-link__icon">●</span> My Profile</button>
-      <button class="nav-link" data-view="group"><span class="nav-link__icon">▦</span> My Group</button>
-      <button class="nav-link" data-view="creategroup"><span class="nav-link__icon">➕</span> Create Group</button>
-      <button class="nav-link" data-view="project"><span class="nav-link__icon">◧</span> My Project</button>
-      <button class="nav-link" data-view="progress"><span class="nav-link__icon">◔</span> Progress</button>
-      <button class="nav-link" data-view="submission"><span class="nav-link__icon">☑</span> Submission</button>
-      <button class="nav-link" data-view="github"><span class="nav-link__icon">⌥</span> GitHub</button>
-      <button class="nav-link" data-view="marks"><span class="nav-link__icon">▤</span> Marks</button>
-      <button class="nav-link" data-view="presentation"><span class="nav-link__icon">◈</span> Presentation</button>
-      <button class="nav-link" data-view="peers"><span class="nav-link__icon">◎</span> Connect</button>
-      <button class="nav-link" data-view="requests"><span class="nav-link__icon">✎</span> Requests</button>
-      <button class="nav-link" data-view="announcements"><span class="nav-link__icon">✉</span> Announcements</button>
-      <button class="nav-link" data-view="notifications"><span class="nav-link__icon">◔</span> Notifications <span
+      <button class="nav-link active" data-view="overview"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg></span> Dashboard</button>
+      <button class="nav-link" data-view="profile"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span> My Profile</button>
+      <button class="nav-link" data-view="group"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span> My Group</button>
+      <button class="nav-link" data-view="creategroup"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg></span> Create Group</button>
+      <button class="nav-link" data-view="project"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span> My Project</button>
+      <button class="nav-link" data-view="progress"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span> Progress</button>
+      <button class="nav-link" data-view="submission"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg></span> Submission</button>
+      <button class="nav-link" data-view="github"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></span> GitHub</button>
+      <button class="nav-link" data-view="marks"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></span> Marks</button>
+      <button class="nav-link" data-view="presentation"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></span> Presentation</button>
+      <button class="nav-link" data-view="peers"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></span> Connect</button>
+      <button class="nav-link" data-view="requests"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></span> Requests</button>
+      <button class="nav-link" data-view="announcements"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span> Announcements</button>
+      <button class="nav-link" data-view="notifications"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span> Notifications <span
           class="nav-link__badge" id="sidebarNotifBadge" style="display:none;"></span></button>
       <div class="sidebar__footer">
-        <button class="logout-btn" id="logoutBtn"><span class="nav-link__icon">⏻</span> Logout</button>
+        <button class="logout-btn" id="logoutBtn"><span class="nav-link__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></span> Logout</button>
       </div>
     </aside>
 
@@ -48,7 +53,7 @@
           </div>
           <div class="topbar__utility">
             <button class="icon-btn" id="bellBtn" title="Notifications" onclick="showView('notifications')">
-              🔔<span class="icon-btn__badge" id="notifBadge" style="display:none;"></span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span class="icon-btn__badge" id="notifBadge" style="display:none;"></span>
             </button>
             <div class="topbar-user" id="topbarUser"></div>
           </div>
