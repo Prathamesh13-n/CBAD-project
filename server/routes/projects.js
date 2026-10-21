@@ -191,6 +191,9 @@ router.put('/:id/submission/review', requireRole('faculty'), (req, res) => {
   const sub = db.prepare('SELECT * FROM submissions WHERE project_id = ?').get(row.id);
   if (!sub) return res.status(404).json({ error: 'No submission to review' });
   const { decision, facultyNote } = req.body || {}; // 'Approved' | 'Rejected'
+  if (decision !== 'Approved' && decision !== 'Rejected') {
+    return res.status(400).json({ error: "Decision must be 'Approved' or 'Rejected'." });
+  }
 
   db.prepare('UPDATE submissions SET status=?, faculty_note=?, reviewed_at=? WHERE project_id=?')
     .run(decision, facultyNote || '', new Date().toISOString(), row.id);
