@@ -242,6 +242,15 @@ The app walks a brand-new student through setup automatically:
 - Every create/update/delete action across the whole app is logged with a
   timestamp. Faculty can view or clear the full history.
 
+## Tests
+
+```bash
+cd server
+npm test
+```
+
+Runs the API smoke tests in `server/test/` (Node's built-in test runner, Node 22.5+). They boot the real server on a random port with a temporary data directory (`CDAD_DATA_DIR`), so your live `server/data/` is never touched. Covered: login per role, 401s, role boundaries, uploads (type/size/team-leader rules), review validation, mark release, exam deadlines, captcha, logout.
+
 ## Database
 
 SQLite tables (`server/db.js`): `admins`, `faculty`, `students`

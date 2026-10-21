@@ -24,7 +24,7 @@ const { Readable } = require('node:stream');
 // Plain `node index.js` has no dotenv any more: load server/.env ourselves (Node 20.12+).
 try { process.loadEnvFile(path.join(__dirname, '.env')); } catch { /* no .env file — fine */ }
 
-const UPLOAD_DIR = path.join(__dirname, 'data', 'uploads');
+const UPLOAD_DIR = path.join(process.env.CDAD_DATA_DIR || path.join(__dirname, 'data'), 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const PREFIX = 'appwrite:';

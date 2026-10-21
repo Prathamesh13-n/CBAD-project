@@ -7,7 +7,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.CDAD_DATA_DIR || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new DatabaseSync(path.join(DATA_DIR, 'cdad.db'));
