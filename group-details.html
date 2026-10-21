@@ -4,24 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Group Details — CDAD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/dashboard.css">
 <link rel="stylesheet" href="css/forms.css">
 <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
-  <main class="main" style="max-width:900px; margin:0 auto;">
-    <div class="topbar">
-      <div>
-        <div class="topbar__eyebrow">Group Record</div>
-        <h1 id="groupTitle">Loading…</h1>
+  <div class="app-shell" style="max-width:960px; grid-template-columns:1fr; margin:0 auto; min-height:calc(100vh - 48px);">
+    <main class="main" style="max-width:100%;">
+      <div class="topbar">
+        <div>
+          <div class="topbar__eyebrow">Group Record</div>
+          <h1 id="groupTitle">Loading…</h1>
+        </div>
+        <div class="topbar__actions">
+          <a class="btn btn--ghost" href="javascript:history.back()">&larr; Back</a>
+        </div>
       </div>
-      <div class="topbar__actions">
-        <a class="btn btn--ghost" href="javascript:history.back()">&larr; Back</a>
-      </div>
-    </div>
-    <div id="groupDetailsContent"></div>
-  </main>
+      <div id="groupDetailsContent"></div>
+    </main>
+  </div>
 
   <script src="js/storage.js"></script>
   <script src="js/common.js"></script>
