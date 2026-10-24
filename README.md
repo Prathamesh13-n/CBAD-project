@@ -65,6 +65,10 @@ Open **http://localhost:3000** (or set `PORT=...` before `npm start` to use a
 different port). The server seeds demo data into `server/data/cdad.db`
 automatically on first run.
 
+> Run the app through this Node/Express server. Opening `index.html` directly
+> or using VS Code Live Server serves only the frontend, so `/api/*` requests
+> such as login and the current-session check will return 404.
+
 ## Login
 
 **Login is always by ID — never by email.** Email is stored on each record

@@ -10,7 +10,7 @@ COPY server/package*.json ./server/
 RUN cd server && npm ci --omit=dev
 
 COPY server/ ./server/
-COPY index.html student.html faculty.html admin.html group-details.html ./
+COPY index.html student.html faculty.html admin.html group-details.html favicon.svg ./
 COPY css/ ./css/
 COPY js/ ./js/
 

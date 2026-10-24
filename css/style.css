@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?
-family=Montserrat:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
 /* ============================================================
    CDAD :: style.css — design tokens, reset, layout shell
    Refined blue palette design:
@@ -112,6 +111,10 @@ body {
   box-sizing: border-box;
 }
 body.no-scroll { overflow: hidden; }
+body.dashboard-page {
+  padding: 0;
+  align-items: stretch;
+}
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
@@ -136,7 +139,7 @@ img { max-width: 100%; display: block; }
 /* ---------------- Layout shell (dashboard pages) ---------------- */
 .app-shell {
   width: 100%;
-  max-width: 1440px;
+  max-width: none;
   min-height: calc(100vh - 48px);
   background: var(--surface);
   border-radius: var(--radius-shell);
@@ -145,6 +148,10 @@ img { max-width: 100%; display: block; }
   grid-template-columns: 260px 1fr;
   overflow: hidden;
   position: relative;
+}
+body.dashboard-page .app-shell {
+  min-height: 100vh;
+  border-radius: 0;
 }
 
 /* ---------------- Sidebar ---------------- */

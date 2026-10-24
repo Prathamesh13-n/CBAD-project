@@ -4,14 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Faculty Dashboard — CDAD</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/dashboard.css">
 <link rel="stylesheet" href="css/forms.css">
 <link rel="stylesheet" href="css/responsive.css">
 </head>
-<body>
+<body class="dashboard-page">
+<button class="mobile-nav-toggle" type="button" aria-label="Open navigation menu" aria-controls="primaryNavigation" aria-expanded="false">
+  <span></span><span></span><span></span>
+</button>
 <div class="app-shell">
-  <aside class="sidebar">
+  <aside class="sidebar" id="primaryNavigation">
     <div class="sidebar__brand">
       <div class="sidebar__mark">🎓</div>
       <div class="sidebar__brand-text"><strong>CDAD</strong><span>Faculty Portal</span></div>

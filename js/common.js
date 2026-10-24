@@ -212,6 +212,39 @@ function gradeFromPercentage(pct) {
   return 'F';
 }
 
+/* ---------- Responsive dashboard navigation ---------- */
+(() => {
+  const toggle = document.querySelector('.mobile-nav-toggle');
+  const sidebar = document.getElementById('primaryNavigation');
+  if (!toggle || !sidebar) return;
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'mobile-nav-backdrop';
+  backdrop.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(backdrop);
+
+  function closeMenu() {
+    document.body.classList.remove('mobile-nav-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open navigation menu');
+  }
+
+  toggle.addEventListener('click', () => {
+    const isOpen = document.body.classList.toggle('mobile-nav-open');
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Close navigation menu' : 'Open navigation menu');
+  });
+
+  backdrop.addEventListener('click', closeMenu);
+  sidebar.addEventListener('click', (event) => {
+    if (event.target.closest('.nav-link, .logout-btn')) closeMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMenu();
+  });
+  window.matchMedia('(min-width: 821px)').addEventListener('change', closeMenu);
+})();
+
 /* ---------- Lightweight inline SVG charts (no external libs) ---------- */
 
 /** Donut/ring chart showing a single percentage, with center label. */
